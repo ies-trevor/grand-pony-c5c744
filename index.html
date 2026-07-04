@@ -44,6 +44,10 @@
   .card .meta{display:flex; justify-content:space-between; color:var(--muted); font-size:12px; margin-top:12px}
   .card svg{display:block; width:100%; height:38px; margin-top:12px}
   .card .stamp{color:var(--muted); font-size:11px; margin-top:8px}
+  .card .level{display:flex; align-items:center; gap:9px; margin-top:11px; font-size:12px; color:var(--muted)}
+  .lvl-bar{flex:1; height:7px; background:var(--panel2); border-radius:5px; overflow:hidden}
+  .lvl-bar>span{display:block; height:100%; border-radius:5px}
+  .lvl-word{white-space:nowrap; font-weight:500}
   .site-link{color:var(--water); font-size:12px; text-decoration:none}
   .site-link:hover{text-decoration:underline}
   section{margin-top:26px}
@@ -156,7 +160,7 @@
 </section>
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-03f (standalone)</span> &mdash; no server functions; deploy by drag-and-drop.<br>
+  <span style="color:var(--water)">Build 2026-07-03g (standalone)</span> &mdash; no server functions; deploy by drag-and-drop.<br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
 
@@ -170,6 +174,7 @@ var USGS_API = "https://waterservices.usgs.gov/nwis/iv/?format=json&sites=" + US
 var BOR_JSON = "https://www.usbr.gov/lc/region/g4000/riverops/webreports/hourlyweb.json";
 var HG_PDF   = "https://www.usbr.gov/lc/region/g4000/hourly/HeadgateReport.pdf";
 var PROXIES = [
+  function(u){ return "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(u); },
   function(u){ return "https://api.allorigins.win/raw?url=" + encodeURIComponent(u); },
   function(u){ return "https://corsproxy.io/?url=" + encodeURIComponent(u); }
 ];
@@ -187,6 +192,30 @@ function fetchVia(url, asBuffer){
     }).catch(function(){ return next(); });
   }
   return next();
+}
+function b64ToBuf(b64){ var bin=atob(b64), n=bin.length, bytes=new Uint8Array(n); for(var i=0;i<n;i++) bytes[i]=bin.charCodeAt(i); return bytes.buffer; }
+function fetchPdf(url){
+  return fetchVia(url, true).catch(function(){
+    // last resort: allorigins /get returns JSON with a base64 data URI
+    return fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(url)).then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }).then(function(j){
+      var c=j.contents||"", idx=c.indexOf("base64,");
+      if(idx<0) throw new Error("no PDF content");
+      return b64ToBuf(c.slice(idx+7));
+    });
+  });
+}
+function levelInfo(series){
+  if(!series || series.length < 4) return null;
+  var vals=series.map(function(p){return p.v;}), min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
+  if(max<=min) return {pct:0.5, word:"average"};
+  var pct=Math.max(0, Math.min(1, (series[series.length-1].v-min)/(max-min)));
+  return {pct:pct, word:(pct<0.34?"low":(pct>0.66?"high":"average"))};
+}
+var LEVELWORD = {low:"running low", average:"about average", high:"running high"};
+function stageAboveLow(stageSeries){
+  if(!stageSeries || !stageSeries.length) return null;
+  var c=stageSeries[stageSeries.length-1].v, min=Math.min.apply(null, stageSeries.map(function(p){return p.v;}));
+  return c-min;
 }
 
 // ---------- helpers ----------
@@ -348,13 +377,22 @@ function renderCards(){
     var lo=vals.length?Math.min.apply(null,vals):null, hi=vals.length?Math.max.apply(null,vals):null;
     var when=(s.flow.length||s.stage.length)?azTime((cur(s.flow)||cur(s.stage)).t):"no data";
     var link=s.link?('<a class="site-link" href="'+s.link+'" target="_blank" rel="noopener">USGS '+USGS_ID+' \u2197</a>'):s.source;
+    var lv=levelInfo(s.flow.length?s.flow:s.stage);
+    var levelHtml="";
+    if(lv){
+      var fill = lv.word==="high" ? "var(--house)" : (lv.word==="low" ? "var(--muted)" : "var(--water)");
+      levelHtml = '<div class="level"><span class="lvl-bar"><span style="width:'+Math.round(lv.pct*100)+'%; background:'+fill+'"></span></span><span class="lvl-word" style="color:'+fill+'">'+LEVELWORD[lv.word]+'</span></div>';
+    }
+    var abl=stageAboveLow(s.stage);
+    var stageHtml = g ? ('stage <span class="mono">'+fmtFt(g.v)+'</span> ft' + (abl!=null ? ' \u00b7 <span class="mono">+'+abl.toFixed(1)+'</span> ft above wk low' : '')) : 'stage <span class="mono">\u2014</span>';
     return '<div class="card'+(s.primary?' primary':'')+'">'+
       '<div class="role"><span>'+s.role+'</span><span class="src">'+s.source+'</span></div>'+
       '<div class="name">'+s.name+'</div>'+
       '<div class="big"><span class="cfs mono">'+fmt(f?f.v:null)+'</span><span class="unit">cfs</span>'+
         '<span class="trend" style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+' '+TWORD[tr]+'</span></div>'+
+      levelHtml+
       spark(s.flow.length?s.flow:s.stage)+
-      '<div class="meta"><span>stage <span class="mono">'+fmtFt(g?g.v:null)+'</span> ft</span>'+
+      '<div class="meta"><span>'+stageHtml+'</span>'+
         '<span>7-day <span class="mono">'+fmt(lo)+'\u2013'+fmt(hi)+'</span></span></div>'+
       '<div class="stamp">reading '+when+' MST \u00b7 '+link+'</div></div>';
   }).join("");
@@ -364,8 +402,11 @@ function renderHero(){
   var elS=document.getElementById("hero-status"), elSub=document.getElementById("hero-sub"), elC=document.getElementById("hero-coming");
   if(!p){ elS.textContent="No reading"; elSub.textContent="No sensor is reporting yet \u2014 try Refresh."; elC.innerHTML=""; return; }
   var series=p.flow.length?p.flow:p.stage, tr=trend(series), c=cur(series), f=cur(p.flow), g=cur(p.stage);
-  elS.innerHTML='<span style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+'</span> Water is '+TWORD[tr];
-  elSub.innerHTML='Closest live source (' + p.name + ') reads ' + (f?'<b style="color:var(--text)" class="mono">'+fmt(f.v)+' cfs</b>':'') + (g?' \u00b7 <span class="mono">'+fmtFt(g.v)+' ft</span>':'') + ' \u00b7 as of '+azTime(c.t)+' MST';
+  var lv=levelInfo(series), levelPhrase=lv?LEVELWORD[lv.word]:"", abl=stageAboveLow(p.stage);
+  elS.innerHTML='<span style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+'</span> Water is '+TWORD[tr]+(levelPhrase?' \u00b7 '+levelPhrase:'');
+  var detail=(f?'<span class="mono">'+fmt(f.v)+' cfs</span>':'')+(g?' \u00b7 <span class="mono">'+fmtFt(g.v)+' ft</span>':'')+' \u00b7 as of '+azTime(c.t)+' MST';
+  if(abl!=null){ elSub.innerHTML=p.name+' is about <b style="color:var(--text)" class="mono">'+abl.toFixed(1)+' ft</b> above this week\u2019s low \u2014 '+detail; }
+  else { elSub.innerHTML='Closest live source ('+p.name+') reads '+detail; }
   var parker=STATIONS.find(function(s){ return s.key==="parker" && s.flow.length; });
   elC.innerHTML = parker ? ('Upstream at Parker, release is <b>'+TWORD[trend(parker.flow)]+'</b> ('+fmt(cur(parker.flow).v)+' cfs) \u2014 roughly what reaches you next.') : "";
 }
@@ -515,10 +556,12 @@ function loadBor(){
     .catch(function(e){ borErr=(e&&e.message?e.message:String(e)); borData=null; borTried=true; });
 }
 function loadHeadgate(){
-  return fetchVia(HG_PDF, true).then(function(buf){ return pdfToLines(buf); }).then(function(lines){ hgData=parseHeadgate(lines); hgErr=null; hgTried=true; })
+  return fetchPdf(HG_PDF).then(function(buf){ return pdfToLines(buf); }).then(function(lines){ hgData=parseHeadgate(lines); hgErr=null; hgTried=true; })
     .catch(function(e){ hgErr=(e&&e.message?e.message:String(e)); hgData=null; hgTried=true; });
 }
-function loadAll(){ Promise.all([loadUsgs(), loadBor(), loadHeadgate()]).then(rebuild); }
+function loadAll(){
+  Promise.all([loadUsgs(), loadBor()]).then(rebuild).then(function(){ return loadHeadgate(); }).then(rebuild);
+}
 document.getElementById("refresh").addEventListener("click", loadAll);
 populateAlertGauges();
 loadAll();
