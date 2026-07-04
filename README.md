@@ -1,98 +1,82 @@
-# Blythe River Reach — live dashboard
+# Blythe River Reach — v2 (place picker + reliable forecast)
 
-A one-page dashboard for your stretch of the Colorado River (33°57′53″N 114°30′03″W),
-just north of Blythe and upstream of the Palo Verde Diversion Dam.
+Live water dashboard for the Colorado River between Parker Dam and Blythe.
+New in v2: a place picker (Lost Lake → Rancho Not So Grande), a dependable
+forecast via a GitHub "data relay", and nicer loading.
 
-## What it shows
-
-- **Live sensors** — Reclamation's hourly sensors along your reach (Water Wheel ~2 mi
-  away, the I-10 bridge at Blythe, Taylor Ferry) plus the one genuinely live USGS gauge,
-  "below Palo Verde Dam." Two nearby USGS gauges are *not* shown because they aren't live:
-  09429010 "at Palo Verde Dam" was discontinued in 1991, and 09427520 "below Parker Dam"
-  isn't serving real-time data. Reclamation instruments this stretch, not USGS.
-- **Rising / falling headline** — read from the gauge closest to you, plus what's coming
-  down from Parker.
-- **Reclamation reach model** — the last 7 days of *hourly* flow at Reclamation's
-  "Water Wheel" model site, which sits ~2 miles from your house. Pulled by a small
-  serverless function so it isn't blocked by the browser.
-- **Coming toward you (forecast)** — the projected hourly flow leaving Headgate Rock Dam
-  (~29 river miles upstream), from Reclamation's schedule PDF, minus the CRIT canal
-  diversion — i.e. the water actually headed down to you for the next ~4 days, with next
-  high/low. Reaches your dock with roughly a day's lag. **Requires a Git/CLI deploy**
-  (see below), since parsing the PDF needs a dependency.
-- **Tide table** — the daily highs and lows (time + level) at your reach, with the next
-  few projected from the recent rhythm. Times are Arizona (MST).
-- **Level alerts** — pick a gauge, a direction, and a level; get a browser notification
-  when it crosses (while the page is open).
-
-## Files
+## What's in here
 
 ```
-blythe-river-site/
-├── index.html                     the dashboard (open-and-go)
-├── netlify.toml                   Netlify config + /api routes + function bundler
-├── package.json                   declares pdf-parse (for the Headgate forecast)
-└── netlify/functions/
-    ├── reclamation.js             server-side fetch of Reclamation's hourly feed
-    └── headgate.js                parses the Headgate schedule PDF (forecast)
+index.html                        the whole website (one file)
+netlify.toml                      tells Netlify how to serve it
+scripts/build-data.cjs            the data-fetcher the robot runs
+.github/workflows/riverdata.yml   the robot: runs every hour on GitHub
+data/riverdata.json               appears automatically after the first run
 ```
 
-## Deploy to Netlify
+## How the forecast finally works
 
-One thing to know first: the **Headgate forecast** needs the `pdf-parse` dependency, which
-only gets installed on a Git or CLI deploy (they run `npm install`). A bare drag-and-drop
-skips that step — everything else still works, but the forecast panel will show a fallback
-link. So pick based on whether you want the forecast:
+Your browser was never able to reliably fetch Reclamation's PDF (government
+servers don't allow it cross-site, and free proxies are flaky). So instead, a
+small robot **inside your GitHub repo** fetches the Reclamation feed and the
+Headgate schedule PDF every hour — server-side, where there are no
+restrictions — and saves the result as a small `data/riverdata.json` file.
+The website just reads that file. No proxies, no server to babysit, free.
 
-**Full version — Git or CLI (recommended, installs the forecast)**
-- `npm i -g netlify-cli`, then from inside the folder: `netlify deploy --prod`
-  (Netlify runs `npm install`, so `pdf-parse` is bundled and the forecast works), **or**
-- Push the folder to a repo and "Import from Git" in Netlify.
+## Setup (one time, ~5 minutes)
 
-**Quickest — drag and drop (everything except the Headgate forecast)**
-1. Go to https://app.netlify.com/drop
-2. Drag the whole `blythe-river-site` folder onto the page.
-3. You get a live URL. On your phone, open it and "Add to Home Screen."
+1. **Edit one line in `index.html`.** Near the top of the script, find
+   `var GH_REPO = "";` and put your repo name in it, for example:
+   `var GH_REPO = "yourusername/yourrepo";`
+   (It's the part of your repo's web address after `github.com/`.)
 
-The reach data and the live gauge don't need any dependency — only the Headgate PDF parser does.
+2. **Upload everything to your GitHub repo** — the same repo Netlify is
+   already connected to. On the repo page: **Add file → Upload files**, then
+   drag in ALL the contents of this folder, including the `scripts` and
+   `.github` folders (folder names must stay exactly as they are — the robot
+   lives at `.github/workflows/riverdata.yml`). Commit.
 
-### Opening it locally
-`index.html` works if you double-click it, **except** the two Reclamation panels (reach model
-and Headgate forecast), which need the serverless functions — run `netlify dev` for those. The
-live USGS gauge, tide table (falls back to the USGS gauge), and alerts all work locally.
+3. **Make sure the repo is Public** (Settings → General → Danger Zone shows
+   visibility). Public repos get unlimited robot minutes, and the website
+   reads the data file from GitHub's public file server.
 
-## Troubleshooting
+4. **Wake the robot once.** On GitHub click the **Actions** tab (enable
+   workflows if it asks) → **Update river data** → **Run workflow**. Wait a
+   minute; you'll see a green check and a new `data/riverdata.json` in the
+   repo. After this it runs itself every hour.
 
-**Both Reclamation panels show a fallback after deploying.** The functions are failing. Check
-Netlify → your site → **Logs → Functions** (or Deploys → the deploy → Functions) for the real
-error:
-- `pdf-parse` "Cannot find module" → you deployed by drag-and-drop, so nothing ran `npm install`.
-  The reach feed will still work; the Headgate forecast needs a CLI/Git deploy. Run
-  `netlify deploy --prod` from inside the folder.
-- `HTTP 403` on the Reclamation fetch → Reclamation blocked the request from Netlify's servers;
-  tell me and I'll route it differently.
-- A function that 404s at `/api/...` → the redirect or function didn't deploy; redeploy via CLI.
+5. **Done.** Netlify auto-deploys the page from the repo like before. The
+   hourly data commits are tagged `[skip netlify]` so they don't trigger
+   rebuilds or use up your build minutes — the page reads the fresh data
+   straight from GitHub.
 
-The functions use Node's built-in `https`, so they don't depend on a particular Node version.
+## How to check it worked
 
-## Customizing
+- Page footer should say **Build 2026-07-04a (v2)**.
+- After the page loads, the "Updated" line in the header shows
+  **"· relay Xm old"** — that means it's using the robot's data. If you don't
+  see it, the page fell back to the old proxy method (check GH_REPO spelling,
+  repo visibility, and that the Action ran green).
 
-- **Reach sensors:** the `REACH` array in `reclamation.js` lists the sites to surface
-  (matched by name substring). Add or rename entries — e.g. tune the `i10` / `taylor`
-  matches if they show up under different names in the feed.
-- **Live USGS gauge:** the `USGS_ID` variable near the top of the `<script>` in `index.html`.
-- **Refresh rate:** the `setInterval(loadAll, 15*60*1000)` line (milliseconds).
-- **Colors/type:** the CSS variables in the `:root` block.
+## Fixing the place list (please do this!)
+
+At the top of `index.html` there's a `PLACES` list. Each place has a river
+mile (higher number = further upstream). **Lost Lake (162.3) and Water Wheel
+(151.6) are from Reclamation's official river-mile index; the rest are my
+estimates based on the order you listed them.** If Shaggy Tree is actually
+upstream of Water Wheel, or the spacing is off, just change the numbers —
+one mile ≈ 15 minutes of pulse travel.
+
+Also near the top: `var WAVE_MPH = 4;` — how fast a dam pulse moves
+downstream. To calibrate: watch one high pass the Water Wheel sensor on the
+site, note when that high actually reaches your dock, and nudge the number
+until the predicted times match reality. Bigger number = pulses arrive sooner.
 
 ## Good to know
 
-- Data is **provisional** (both USGS and Reclamation label it so) and can be revised.
-- This is **not a flood-warning system** — it reflects managed dam releases, not storm runoff.
-- Alerts fire only while the page is open; a static site can't push when it's fully closed.
-- Reading and tide times are shown in **Arizona (MST)**, matching Reclamation's own schedule.
-
-## Sources
-
-- USGS Instantaneous Values: https://waterservices.usgs.gov/
-- Reclamation Lower Colorado river operations: https://www.usbr.gov/lc/riverops.html
-- Parker Dam projected schedule (PDF): https://www.usbr.gov/lc/region/g4000/hourly/DavisParkerSchedules.pdf
+- GitHub pauses hourly robots after ~60 days with no repo activity. The
+  robot's own commits count as activity, so it keeps itself alive — but if
+  the data ever goes stale, just open Actions and press Run workflow again.
+- The hourly run can drift a few minutes; that's normal for GitHub.
+- If GitHub or the robot is ever down, the page automatically falls back to
+  the old proxy method, so you're never worse off than before.

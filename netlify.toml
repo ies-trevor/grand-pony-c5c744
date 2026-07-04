@@ -1,32 +1,12 @@
 [build]
   publish = "."
-  functions = "netlify/functions"
-
-# Bundle each function independently so the reach feed keeps working even if the
-# PDF function has trouble. pdf-parse is marked external (shipped from node_modules).
-[functions]
-  node_bundler = "esbuild"
-
-[functions.headgate]
-  external_node_modules = ["pdf-parse"]
-
-[[redirects]]
-  from = "/api/reclamation"
-  to = "/.netlify/functions/reclamation"
-  status = 200
-
-[[redirects]]
-  from = "/api/headgate"
-  to = "/.netlify/functions/headgate"
-  status = 200
-
-# Don't let browsers cache the HTML across deploys
-[[headers]]
-  for = "/"
-  [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/index.html"
   [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "no-cache"
