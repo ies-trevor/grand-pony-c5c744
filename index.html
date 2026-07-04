@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blythe River Reach — live levels</title>
+<style>
+  :root{
+    --bg:#0d1521; --panel:#14202f; --panel2:#1b2c3f; --border:#263b53;
+    --text:#dce7f0; --muted:#8aa2b8; --water:#35b8d6;
+    --rise:#35d6a4; --fall:#f0a63a; --steady:#8aa2b8; --house:#ff7a4d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; line-height:1.5; padding:20px; max-width:1040px; margin:0 auto}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  header{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px}
+  h1{font-size:22px; font-weight:600; letter-spacing:-.02em; margin:0}
+  h2{font-size:16px; font-weight:600; margin:0 0 4px}
+  .coords{color:var(--muted); font-size:13px}
+  .updated{margin-left:auto; color:var(--muted); font-size:13px; display:flex; align-items:center; gap:10px}
+  button{background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:5px 12px; font-size:13px; cursor:pointer}
+  button:hover{border-color:var(--water)}
+  .strip{display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:var(--muted); font-size:12px; margin:14px 0 22px; padding:10px 14px; background:var(--panel); border:1px solid var(--border); border-radius:10px}
+  .strip b{color:var(--text); font-weight:500}
+  .strip .you{color:var(--house); font-weight:500}
+  .strip .arrow{color:var(--border)}
+  .hero{background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--water); border-radius:14px; padding:20px 22px; margin-bottom:22px}
+  .hero .eyebrow{color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em}
+  .hero .status{font-size:34px; font-weight:600; letter-spacing:-.02em; margin:6px 0 2px; display:flex; align-items:center; gap:12px}
+  .hero .sub{color:var(--muted); font-size:14px}
+  .hero .coming{margin-top:14px; padding-top:14px; border-top:1px solid var(--border); font-size:14px; color:var(--muted)}
+  .hero .coming b{color:var(--text); font-weight:500}
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px 18px}
+  .card.primary{border-color:var(--house)}
+  .card .role{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); display:flex; justify-content:space-between; gap:8px}
+  .card.primary .role{color:var(--house)}
+  .card .src{color:var(--muted); font-weight:400; letter-spacing:0; text-transform:none}
+  .card .name{font-size:15px; font-weight:500; margin:2px 0 12px}
+  .card .big{display:flex; align-items:baseline; gap:8px}
+  .card .cfs{font-size:30px; font-weight:600}
+  .card .unit{color:var(--muted); font-size:13px}
+  .card .trend{margin-left:auto; font-size:15px; font-weight:500; display:flex; align-items:center; gap:5px}
+  .card .meta{display:flex; justify-content:space-between; color:var(--muted); font-size:12px; margin-top:12px}
+  .card svg{display:block; width:100%; height:38px; margin-top:12px}
+  .card .stamp{color:var(--muted); font-size:11px; margin-top:8px}
+  .site-link{color:var(--water); font-size:12px; text-decoration:none}
+  .site-link:hover{text-decoration:underline}
+  section{margin-top:26px}
+  .section-panel{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px}
+  p.lead{color:var(--muted); font-size:14px; margin:0 0 14px; max-width:74ch}
+  .fc-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap}
+  .fc-now{margin-left:auto; font-size:13px; color:var(--muted)}
+  .fc-now b{color:var(--text); font-weight:500}
+  #fc-chart{width:100%; height:120px; display:block; margin:6px 0 4px}
+  .links{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px}
+  .links a{background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:8px 14px; color:var(--text); text-decoration:none; font-size:13px}
+  .links a:hover{border-color:var(--water); color:var(--water)}
+  table.tide{width:100%; border-collapse:collapse; font-size:14px}
+  table.tide th{text-align:left; color:var(--muted); font-weight:500; font-size:12px; padding:6px 8px; border-bottom:1px solid var(--border)}
+  table.tide td{padding:8px; border-bottom:1px solid var(--border)}
+  table.tide tr:last-child td{border-bottom:none}
+  .pill{display:inline-block; padding:1px 9px; border-radius:20px; font-size:12px; font-weight:500}
+  .pill.high{background:#12313a; color:#7fe3d6}
+  .pill.low{background:#2a2114; color:#f2c98a}
+  .expected{color:var(--muted); font-style:italic}
+  .alert-row{display:flex; flex-wrap:wrap; align-items:center; gap:10px; font-size:14px}
+  .alert-row select,.alert-row input[type=number]{background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:14px}
+  .alert-row input[type=number]{width:110px}
+  .note{color:var(--muted); font-size:12px; margin-top:10px}
+  .banner{background:#2a1f14; border:1px solid #6b4a1e; color:#f0c98a; border-radius:10px; padding:12px 16px; font-size:13px; margin-bottom:18px; display:none}
+  .fire{background:#12313a; border:1px solid #2f6b63; color:#9fe7db; border-radius:10px; padding:12px 16px; font-size:14px; margin-top:12px; display:none}
+  footer{color:var(--muted); font-size:12px; margin-top:28px; border-top:1px solid var(--border); padding-top:14px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Blythe River Reach</h1>
+  <span class="coords mono">33&deg;57&prime;53&Prime;N 114&deg;30&prime;03&Prime;W</span>
+  <span class="updated"><span id="updated">Loading&hellip;</span><button id="refresh">Refresh</button></span>
+</header>
+
+<div class="strip">
+  <b>Parker Dam</b><span class="arrow">&#9656;</span>
+  <span class="you">your house</span><span class="arrow">&#9656;</span>
+  <span>Water Wheel sensor</span><span class="arrow">&#9656;</span>
+  <span>diversion dam</span><span class="arrow">&#9656;</span>
+  <b>Blythe</b><span class="arrow">&#9656;</span>
+  <span>live USGS gauge</span>
+</div>
+
+<div class="banner" id="banner"></div>
+
+<div class="hero">
+  <div class="eyebrow">Near your house right now</div>
+  <div class="status" id="hero-status">&mdash;</div>
+  <div class="sub" id="hero-sub">Reading the closest sensor&hellip;</div>
+  <div class="coming" id="hero-coming"></div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<section>
+  <div class="section-panel" style="border-left:3px solid var(--house)">
+    <div class="fc-head">
+      <h2>Coming toward you &mdash; next few days</h2>
+      <span class="fc-now" id="hg-next"></span>
+    </div>
+    <p class="lead" id="hg-lead">Loading Reclamation&rsquo;s Headgate Rock Dam schedule (projected hourly flow, ~29 river miles upstream)&hellip;</p>
+    <svg id="hg-chart" viewBox="0 0 900 120" preserveAspectRatio="none" style="display:none"></svg>
+    <p class="note" id="hg-note"></p>
+  </div>
+</section>
+
+<section>
+  <div class="section-panel">
+    <div class="fc-head">
+      <h2>Your reach &mdash; recent (Water Wheel)</h2>
+      <span class="fc-now" id="fc-now"></span>
+    </div>
+    <p class="lead" id="fc-lead">Loading Reclamation&rsquo;s hourly model for the Water Wheel sensor (~2 miles from your house)&hellip;</p>
+    <svg id="fc-chart" viewBox="0 0 900 120" preserveAspectRatio="none" style="display:none"></svg>
+    <div class="links">
+      <a href="https://www.usbr.gov/lc/region/g4000/hourly/DavisParkerSchedules.pdf" target="_blank" rel="noopener">Parker Dam projected schedule (PDF, updated daily) &#8599;</a>
+      <a href="https://www.usbr.gov/lc/riverops.html" target="_blank" rel="noopener">Reclamation river operations &#8599;</a>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-panel">
+    <h2>Tide table &mdash; daily highs &amp; lows</h2>
+    <p class="lead" id="tide-lead">When the pulse peaks and bottoms out at your reach. Times are Arizona (MST).</p>
+    <table class="tide"><thead><tr><th>When (MST)</th><th></th><th>Level</th></tr></thead>
+      <tbody id="tide-body"><tr><td colspan="3" style="color:var(--muted)">Loading&hellip;</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="section-panel">
+    <h2>Alert me when the river crosses a level</h2>
+    <p class="lead">Pick a sensor, a direction, and a level. While this page is open (leave a tab or your phone on it), you&rsquo;ll get a notification the moment it crosses.</p>
+    <div class="alert-row">
+      <label><input type="checkbox" id="al-on"> Enabled</label>
+      <select id="al-gauge"></select>
+      <select id="al-metric"><option value="flow">flow (cfs)</option><option value="stage">stage (ft)</option></select>
+      <select id="al-dir"><option value="above">rises above</option><option value="below">drops below</option></select>
+      <input type="number" id="al-level" placeholder="e.g. 8000" step="any">
+      <button id="al-save">Save alert</button>
+    </div>
+    <div class="fire" id="al-fire"></div>
+    <div class="note" id="al-note">Browser notifications fire only while this page is open &mdash; a static site can&rsquo;t push when it&rsquo;s fully closed. Keep it pinned in a tab or add it to your phone&rsquo;s home screen.</div>
+  </div>
+</section>
+
+<footer>
+  <span style="color:var(--water)">Build 2026-07-03e</span> &mdash; if you don&rsquo;t see this tag on the live site, the new page hasn&rsquo;t deployed yet (hard-refresh with Ctrl/Cmd+Shift+R).<br>
+  Live flow &amp; stage from the U.S. Bureau of Reclamation (hourly reach sensors) and the USGS Instantaneous Values service (one live gauge below the diversion). Two nearby USGS gauges &mdash; 09429010 &ldquo;at Palo Verde Dam&rdquo; (discontinued 1991) and 09427520 &ldquo;below Parker Dam&rdquo; &mdash; are not serving real-time data, so they are not shown. All values are provisional. This is not a flood-warning system. Reading and tide times are Arizona (MST).
+</footer>
+
+<script>
+// ---- live USGS site (the one that actually reports here) ----
+var USGS_ID = "09429100";
+var USGS_API = "https://waterservices.usgs.gov/nwis/iv/?format=json&sites=" + USGS_ID +
+  "&parameterCd=00060,00065&period=P7D&siteStatus=all";
+
+// ---- helpers ----
+function fmt(n){ return n==null ? "\u2014" : Math.round(n).toLocaleString(); }
+function fmtFt(n){ return n==null ? "\u2014" : n.toFixed(2); }
+function azTime(ms){ return new Date(ms).toLocaleString([], {timeZone:"America/Phoenix", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}); }
+var store = {
+  get:function(k){ try { return JSON.parse(localStorage.getItem(k)); } catch(e){ return null; } },
+  set:function(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+};
+
+// series = [{t(ms), v}] ascending
+function cur(series){ return (series && series.length) ? series[series.length-1] : null; }
+// Drop lone spikes/dropouts: a point far from BOTH neighbors while the neighbors agree
+// is a sensor glitch, not a real pulse (real ramps move gradually so neighbors differ).
+function clean(series){
+  if(!series || series.length < 5) return series || [];
+  var out = [series[0]];
+  for(var i=1;i<series.length-1;i++){
+    var a=series[i-1].v, b=series[i+1].v, p=series[i].v;
+    var mid=(a+b)/2, dev=Math.abs(p-mid), gap=Math.abs(a-b);
+    if(dev > 0.4*Math.abs(mid) && gap < 0.5*dev) continue;
+    out.push(series[i]);
+  }
+  out.push(series[series.length-1]);
+  return out;
+}
+function esc(s){ return String(s).replace(/[&<>]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]; }); }
+function trend(series){
+  if(!series || series.length < 4) return "steady";
+  var last = series[series.length-1], ref = series[0];
+  for(var i=series.length-1;i>=0;i--){ if(last.t - series[i].t >= 3*3600*1000){ ref = series[i]; break; } }
+  var delta = last.v - ref.v, thresh = Math.max(50, last.v*0.02);
+  if(delta >  thresh) return "rising";
+  if(delta < -thresh) return "falling";
+  return "steady";
+}
+var TMARK = { rising:"\u25b2", falling:"\u25bc", steady:"\u25ac" };
+var TCOLOR = { rising:"var(--rise)", falling:"var(--fall)", steady:"var(--steady)" };
+var TWORD = { rising:"rising", falling:"falling", steady:"holding steady" };
+function spark(series){
+  if(!series || series.length < 2) return "";
+  var vals = series.map(function(p){return p.v;}), min=Math.min.apply(null,vals), max=Math.max.apply(null,vals), span=(max-min)||1;
+  var W=280,H=38,pad=2, step=(W-2*pad)/(series.length-1), d="";
+  series.forEach(function(p,i){ var x=pad+i*step, y=pad+(H-2*pad)*(1-(p.v-min)/span); d += (i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; });
+  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none"><path d="'+d+'" fill="none" stroke="var(--water)" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+}
+
+// ---- state ----
+var borData = null, borTried = false, borErr = null, usgsData = null, hgData = null, hgTried = false, hgErr = null;
+var STATIONS = [];
+
+function rebuild(){
+  var st = [];
+  if(borData && borData.stations){
+    borData.stations.forEach(function(s){ st.push({ key:s.key, name:s.name, role:s.role, order:s.order, primary:!!s.primary, source:"USBR", link:null, flow:clean(s.flow||[]), stage:clean(s.stage||[]) }); });
+  }
+  if(usgsData && usgsData[USGS_ID]){
+    st.push({ key:"belowpv", name:"Below Palo Verde Dam", role:"Live USGS \u00b7 below the diversion", order:3, primary:false, source:"USGS",
+      link:"https://waterdata.usgs.gov/monitoring-location/USGS-"+USGS_ID+"/",
+      flow: clean(usgsData[USGS_ID]["00060"]||[]), stage: clean(usgsData[USGS_ID]["00065"]||[]) });
+  }
+  st.sort(function(a,b){ return (a.order==null?9:a.order)-(b.order==null?9:b.order); });
+  STATIONS = st;
+  renderCards(); renderHero(); renderHeadgate(); renderReach(); renderTide(); populateAlertGauges(); evalAlert();
+}
+
+function getPrimary(){
+  return STATIONS.find(function(s){ return s.primary && s.flow.length; })
+      || STATIONS.find(function(s){ return s.key==="belowpv" && (s.flow.length||s.stage.length); })
+      || STATIONS.find(function(s){ return s.flow.length||s.stage.length; })
+      || null;
+}
+
+function renderCards(){
+  var grid = document.getElementById("grid");
+  if(!STATIONS.length){ grid.innerHTML = ""; return; }
+  grid.innerHTML = STATIONS.map(function(s){
+    var f = cur(s.flow), g = cur(s.stage), tr = trend(s.flow.length?s.flow:s.stage);
+    var vals = s.flow.map(function(p){return p.v;});
+    var lo = vals.length?Math.min.apply(null,vals):null, hi=vals.length?Math.max.apply(null,vals):null;
+    var when = (s.flow.length||s.stage.length) ? azTime((cur(s.flow)||cur(s.stage)).t) : "no data";
+    var link = s.link ? '<a class="site-link" href="'+s.link+'" target="_blank" rel="noopener">USGS '+USGS_ID+' \u2197</a>' : (s.source);
+    return '<div class="card'+(s.primary?' primary':'')+'">'+
+      '<div class="role"><span>'+s.role+'</span><span class="src">'+s.source+'</span></div>'+
+      '<div class="name">'+s.name+'</div>'+
+      '<div class="big"><span class="cfs mono">'+fmt(f?f.v:null)+'</span><span class="unit">cfs</span>'+
+        '<span class="trend" style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+' '+TWORD[tr]+'</span></div>'+
+      spark(s.flow.length?s.flow:s.stage)+
+      '<div class="meta"><span>stage <span class="mono">'+fmtFt(g?g.v:null)+'</span> ft</span>'+
+        '<span>7-day <span class="mono">'+fmt(lo)+'\u2013'+fmt(hi)+'</span></span></div>'+
+      '<div class="stamp">reading '+when+' MST \u00b7 '+link+'</div></div>';
+  }).join("");
+}
+
+function renderHero(){
+  var p = getPrimary();
+  var elS = document.getElementById("hero-status"), elSub = document.getElementById("hero-sub"), elC = document.getElementById("hero-coming");
+  if(!p){ elS.textContent = "No reading"; elSub.textContent = "No sensor is reporting yet \u2014 try Refresh."; elC.innerHTML=""; return; }
+  var series = p.flow.length ? p.flow : p.stage;
+  var tr = trend(series), c = cur(series);
+  var f = cur(p.flow), g = cur(p.stage);
+  elS.innerHTML = '<span style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+'</span> Water is '+TWORD[tr];
+  elSub.innerHTML = 'Closest live source (' + p.name + ') reads ' +
+    (f? '<b style="color:var(--text)" class="mono">'+fmt(f.v)+' cfs</b>' : '') +
+    (g? ' \u00b7 <span class="mono">'+fmtFt(g.v)+' ft</span>' : '') +
+    ' \u00b7 as of '+azTime(c.t)+' MST';
+  var parker = STATIONS.find(function(s){ return s.key==="parker" && s.flow.length; });
+  elC.innerHTML = parker ? ('Upstream at Parker, release is <b>'+TWORD[trend(parker.flow)]+'</b> ('+fmt(cur(parker.flow).v)+' cfs) \u2014 roughly what reaches you next.') : "";
+}
+
+function renderReach(){
+  var lead = document.getElementById("fc-lead"), now = document.getElementById("fc-now"), svg = document.getElementById("fc-chart");
+  var ww = STATIONS.find(function(s){ return s.key==="waterwheel" && s.flow.length; });
+  if(ww){
+    var c = cur(ww.flow), vals = ww.flow.map(function(p){return p.v;});
+    now.innerHTML = 'Now at your reach <b class="mono">'+fmt(c.v)+' cfs</b> \u00b7 '+azTime(c.t)+' MST';
+    lead.innerHTML = 'The Reclamation hourly model at the Water Wheel sensor, about 2 miles from your house \u2014 the last 7 days of flow. It swings between <b class="mono" style="color:var(--text)">'+fmt(Math.min.apply(null,vals))+'</b> and <b class="mono" style="color:var(--text)">'+fmt(Math.max.apply(null,vals))+'</b> cfs. The daily rhythm repeats closely, so this doubles as your near-term picture; the projected schedule (linked) confirms the days ahead.';
+    var W=900,H=120,pad=6, min=Math.min.apply(null,vals), max=Math.max.apply(null,vals), span=(max-min)||1, step=(W-2*pad)/(ww.flow.length-1), line="", area="";
+    ww.flow.forEach(function(p,i){ var x=pad+i*step, y=pad+(H-2*pad)*(1-(p.v-min)/span); line+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; area+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; });
+    area += "L"+(pad+(ww.flow.length-1)*step).toFixed(1)+" "+(H-pad)+" L"+pad+" "+(H-pad)+" Z";
+    svg.innerHTML = '<path d="'+area+'" fill="var(--water)" opacity="0.12"/><path d="'+line+'" fill="none" stroke="var(--water)" stroke-width="1.5"/>';
+    svg.style.display="block";
+  } else {
+    svg.style.display="none"; now.innerHTML="";
+    if(!borTried){
+      lead.innerHTML = 'Loading Reclamation&rsquo;s hourly model for the Water Wheel sensor&hellip;';
+    } else if(borErr){
+      lead.innerHTML = 'Reach feed error &mdash; <span class="mono">'+esc(borErr)+'</span>. Check Netlify &rarr; Logs &rarr; Functions &rarr; <span class="mono">reclamation</span>. The live gauge and tide table still work.';
+    } else {
+      lead.innerHTML = 'The reach feed responded but had no Water Wheel site in it right now. Sites returned: <span class="mono">'+esc((borData&&borData.stations||[]).map(function(s){return s.key;}).join(", ")||"none")+'</span>.';
+    }
+  }
+}
+
+function renderHeadgate(){
+  var lead=document.getElementById("hg-lead"), nextEl=document.getElementById("hg-next"), svg=document.getElementById("hg-chart"), noteEl=document.getElementById("hg-note");
+  var d = (hgData && hgData.downstream) ? clean(hgData.downstream) : [];
+  if(!d.length){
+    svg.style.display="none"; nextEl.innerHTML=""; noteEl.textContent="";
+    if(!hgTried){
+      lead.innerHTML = 'Loading Reclamation&rsquo;s Headgate Rock Dam schedule\u2026';
+    } else if(hgErr){
+      lead.innerHTML = 'Forecast error &mdash; <span class="mono">'+esc(hgErr)+'</span>. If it mentions <span class="mono">pdf-parse</span>, redeploy with <span class="mono">netlify deploy --prod</span> so it installs. Raw schedule: <a class="site-link" href="https://www.usbr.gov/lc/region/g4000/hourly/HeadgateReport.pdf" target="_blank" rel="noopener">Headgate PDF \u2197</a>.';
+    } else {
+      lead.innerHTML = 'The forecast feed responded but parsed no rows. Raw schedule: <a class="site-link" href="https://www.usbr.gov/lc/region/g4000/hourly/HeadgateReport.pdf" target="_blank" rel="noopener">Headgate PDF \u2197</a>.';
+    }
+    return;
+  }
+  var now = Date.now();
+  var fut = d.filter(function(p){ return p.t >= now - 2*3600*1000; });
+  var series = fut.length >= 4 ? fut : d;
+  var W=900,H=120,pad=6, vals=series.map(function(p){return p.v;}), min=Math.min.apply(null,vals), max=Math.max.apply(null,vals), span=(max-min)||1, step=(W-2*pad)/(series.length-1), line="", area="";
+  series.forEach(function(p,i){ var x=pad+i*step, y=pad+(H-2*pad)*(1-(p.v-min)/span); line+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; area+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; });
+  area += "L"+(pad+(series.length-1)*step).toFixed(1)+" "+(H-pad)+" L"+pad+" "+(H-pad)+" Z";
+  svg.innerHTML = '<path d="'+area+'" fill="var(--house)" opacity="0.10"/><path d="'+line+'" fill="none" stroke="var(--house)" stroke-width="1.5" stroke-dasharray="5 4"/>';
+  svg.style.display="block";
+  var ex = findTides(series).filter(function(e){ return e.t > now; });
+  var nh = ex.find(function(e){return e.type==="high";}), nl = ex.find(function(e){return e.type==="low";});
+  var bits = [];
+  if(nh) bits.push('next high ~<b class="mono">'+fmt(nh.v)+'</b> cfs '+azTime(nh.t));
+  if(nl) bits.push('next low ~<b class="mono">'+fmt(nl.v)+'</b> cfs '+azTime(nl.t));
+  nextEl.innerHTML = bits.join(" \u00b7 ");
+  lead.innerHTML = 'Projected flow leaving Headgate Rock Dam (~29 river miles upstream) heading down to you \u2014 dashed because it&rsquo;s a schedule, not a reading. It reaches your dock with roughly a day&rsquo;s lag and some smoothing. Range ahead: <b class="mono" style="color:var(--text)">'+fmt(min)+'</b>\u2013<b class="mono" style="color:var(--text)">'+fmt(max)+'</b> cfs.';
+  noteEl.textContent = hgData.note || "";
+}
+
+// ---- tide detection ----
+function findTides(points){
+  if(points.length < 6) return [];
+  var vals = points.map(function(p){return p.v;});
+  var amp = Math.max(0.08, (Math.max.apply(null,vals)-Math.min.apply(null,vals))*0.18);
+  var ex = [], dir = 0, ext = points[0];
+  for(var i=1;i<points.length;i++){
+    var p = points[i];
+    if(dir>=0 && p.v > ext.v){ ext=p; if(dir===0) dir=1; }
+    else if(dir<=0 && p.v < ext.v){ ext=p; if(dir===0) dir=-1; }
+    if(dir>0 && p.v < ext.v - amp){ ex.push({type:"high", t:ext.t, v:ext.v}); dir=-1; ext=p; }
+    else if(dir<0 && p.v > ext.v + amp){ ex.push({type:"low", t:ext.t, v:ext.v}); dir=1; ext=p; }
+  }
+  return ex;
+}
+function medianPeriod(ex, type){
+  var ts = ex.filter(function(e){return e.type===type;}).map(function(e){return e.t;});
+  if(ts.length < 2) return null;
+  var gaps=[]; for(var i=1;i<ts.length;i++) gaps.push(ts[i]-ts[i-1]);
+  gaps.sort(function(a,b){return a-b;});
+  return gaps[Math.floor(gaps.length/2)];
+}
+function renderTide(){
+  var body = document.getElementById("tide-body"), lead = document.getElementById("tide-lead");
+  var p = getPrimary();
+  if(!p){ body.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">Waiting for data\u2026</td></tr>'; return; }
+  var useStage = p.stage.length >= 6;
+  var series = useStage ? p.stage : p.flow;
+  var unit = useStage ? "ft" : "cfs";
+  lead.textContent = "From " + p.name + " (" + (useStage?"stage":"flow") + "). Times are Arizona (MST).";
+  var ex = findTides(series);
+  if(ex.length < 2){ body.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">Not enough variation to detect a clear tide right now.</td></tr>'; return; }
+  var now = Date.now(), rows = [];
+  ex.filter(function(e){ return e.t > now - 30*3600*1000; }).slice(-4).forEach(function(e){ rows.push({type:e.type, t:e.t, v:e.v, expected:false}); });
+  ["high","low"].forEach(function(type){
+    var per = medianPeriod(ex, type), last = ex.slice().reverse().find(function(e){return e.type===type;});
+    if(per && last){ var t=last.t; for(var k=0;k<3 && rows.length<9;k++){ t+=per; if(t>now) rows.push({type:type, t:t, v:last.v, expected:true}); } }
+  });
+  rows.sort(function(a,b){return a.t-b.t;});
+  body.innerHTML = rows.slice(0,7).map(function(r){
+    var lvl = unit==="ft" ? r.v.toFixed(2)+" ft" : Math.round(r.v).toLocaleString()+" cfs";
+    return '<tr class="'+(r.expected?"expected":"")+'"><td>'+azTime(r.t)+(r.expected?' \u00b7 expected':'')+'</td>'+
+      '<td><span class="pill '+r.type+'">'+(r.type==="high"?"High":"Low")+'</span></td>'+
+      '<td class="mono">'+lvl+'</td></tr>';
+  }).join("");
+}
+
+// ---- alerts ----
+var AL_KEY = "blythe_alert_v2";
+function populateAlertGauges(){
+  var sel = document.getElementById("al-gauge");
+  var opts = STATIONS.filter(function(s){ return s.flow.length || s.stage.length; });
+  var prev = sel.value;
+  sel.innerHTML = opts.map(function(s){ return '<option value="'+s.key+'">'+s.name+'</option>'; }).join("");
+  var saved = store.get(AL_KEY);
+  if(saved && opts.some(function(s){return s.key===saved.gauge;})) sel.value = saved.gauge;
+  else if(prev && opts.some(function(s){return s.key===prev;})) sel.value = prev;
+  if(saved){
+    document.getElementById("al-on").checked = !!saved.enabled;
+    document.getElementById("al-metric").value = saved.metric || "flow";
+    document.getElementById("al-dir").value = saved.dir || "above";
+    if(saved.level!=null && document.getElementById("al-level").value==="") document.getElementById("al-level").value = saved.level;
+  }
+}
+function alertValue(cfg){
+  var s = STATIONS.find(function(x){ return x.key===cfg.gauge; });
+  if(!s) return null;
+  var c = cur(cfg.metric==="stage" ? s.stage : s.flow);
+  return c ? c.v : null;
+}
+function evalAlert(){
+  var cfg = store.get(AL_KEY);
+  if(!cfg || !cfg.enabled || cfg.level==null) return;
+  var val = alertValue(cfg);
+  if(val==null) return;
+  var crossed = cfg.dir==="above" ? (val >= cfg.level) : (val <= cfg.level);
+  if(crossed && !cfg._crossed){
+    var unit = cfg.metric==="stage" ? "ft" : "cfs";
+    var s = STATIONS.find(function(x){ return x.key===cfg.gauge; });
+    var msg = (s?s.name:"River")+" is now "+(cfg.dir==="above"?"above":"below")+" "+cfg.level+" "+unit+" (currently "+(cfg.metric==="stage"?val.toFixed(2):Math.round(val))+").";
+    var fire = document.getElementById("al-fire"); fire.textContent = "\u2691 "+msg; fire.style.display="block";
+    try{ if("Notification" in window && Notification.permission==="granted") new Notification("Blythe river alert", {body: msg}); }catch(e){}
+  }
+  cfg._crossed = crossed; store.set(AL_KEY, cfg);
+}
+document.getElementById("al-save").addEventListener("click", function(){
+  var cfg = { enabled:document.getElementById("al-on").checked, gauge:document.getElementById("al-gauge").value,
+    metric:document.getElementById("al-metric").value, dir:document.getElementById("al-dir").value,
+    level:parseFloat(document.getElementById("al-level").value), _crossed:false };
+  if(isNaN(cfg.level)){ alert("Enter a level first."); return; }
+  store.set(AL_KEY, cfg);
+  var note = document.getElementById("al-note");
+  if(cfg.enabled && "Notification" in window && Notification.permission==="default"){
+    Notification.requestPermission().then(function(){ note.textContent = Notification.permission==="granted" ? "Alert saved. Notifications on \u2014 fires while this page is open." : "Alert saved. Notifications blocked, but the on-page banner still shows. Keep this page open."; });
+  } else { note.textContent = "Alert saved. It fires while this page is open."; }
+  document.getElementById("al-fire").style.display="none"; evalAlert();
+});
+
+// ---- loaders ----
+function parseUsgs(json){
+  var out = {};
+  (json.value && json.value.timeSeries || []).forEach(function(ts){
+    var site = ts.sourceInfo.siteCode[0].value, param = ts.variable.variableCode[0].value;
+    var raw = (ts.values[0] && ts.values[0].value) || [];
+    var pts = raw.map(function(p){ return {t:new Date(p.dateTime).getTime(), v:parseFloat(p.value)}; })
+                 .filter(function(p){ return !isNaN(p.v) && p.v>-9999; })
+                 .sort(function(a,b){return a.t-b.t;});
+    if(!out[site]) out[site]={};
+    out[site][param]=pts;
+  });
+  return out;
+}
+function loadUsgs(){
+  var banner = document.getElementById("banner"); banner.style.display="none";
+  document.getElementById("updated").textContent = "Updating\u2026";
+  var ctrl = new AbortController(), to = setTimeout(function(){ctrl.abort();}, 12000);
+  return fetch(USGS_API, {signal:ctrl.signal}).then(function(res){ clearTimeout(to); if(!res.ok) throw new Error("HTTP "+res.status); return res.json(); })
+    .then(function(json){ usgsData = parseUsgs(json); document.getElementById("updated").textContent = "Updated " + new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); })
+    .catch(function(){ document.getElementById("updated").textContent="Couldn\u2019t update"; banner.style.display="block"; banner.innerHTML="Couldn\u2019t reach the USGS service from here. Deployed or opened locally it pulls live data; the gauge link in the card opens it directly."; });
+}
+function loadBor(){
+  return fetch("/api/reclamation").then(function(res){
+    return res.text().then(function(txt){
+      var d=null; try{ d=JSON.parse(txt); }catch(e){}
+      if(!res.ok){ borErr = "HTTP "+res.status+(d&&d.error?" \u2014 "+d.error:(txt?" \u2014 "+txt.slice(0,140):"")); borData=null; }
+      else { borData=d; borErr=null; }
+      borTried=true;
+    });
+  }).catch(function(e){ borErr="request failed: "+(e&&e.message?e.message:e); borData=null; borTried=true; });
+}
+function loadHeadgate(){
+  return fetch("/api/headgate").then(function(res){
+    return res.text().then(function(txt){
+      var d=null; try{ d=JSON.parse(txt); }catch(e){}
+      if(!res.ok){ hgErr = "HTTP "+res.status+(d&&d.error?" \u2014 "+d.error:(txt?" \u2014 "+txt.slice(0,140):"")); hgData=null; }
+      else { hgData=d; hgErr=null; }
+      hgTried=true;
+    });
+  }).catch(function(e){ hgErr="request failed: "+(e&&e.message?e.message:e); hgData=null; hgTried=true; });
+}
+function loadAll(){ Promise.all([loadUsgs(), loadBor(), loadHeadgate()]).then(rebuild); }
+loadAll();
+setInterval(loadAll, 15*60*1000);
+</script>
+</body>
+</html>

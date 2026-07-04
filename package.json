@@ -1,0 +1,9 @@
+{
+  "name": "blythe-river-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live dashboard for the Colorado River reach north of Blythe",
+  "dependencies": {
+    "pdf-parse": "^1.1.1"
+  }
+}
