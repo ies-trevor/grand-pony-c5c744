@@ -40,7 +40,7 @@ function toPoints(s) {
 const REACH = [
   { key: "parker",     name: "Parker Dam release", role: "Release upstream \u00b7 early warning", order: 0, names: ["havasu", "parker"], releaseType: "release" },
   { key: "waterwheel", name: "Water Wheel", role: "Reference sensor \u00b7 this stretch", order: 1, primary: true, names: ["water wheel"] },
-  { key: "i10",        name: "Blythe (I-10 bridge)", role: "Reclamation sensor \u00b7 at Blythe", order: 2, names: ["i-10", "interstate 10", "i10"] },
+  { key: "i10",        name: "Blythe (I-10 bridge)", role: "Reclamation sensor \u00b7 at Blythe", order: 2, names: ["i-10", "i 10", "interstate", "i10"] },
   { key: "taylor",     name: "Taylor Ferry", role: "Reclamation sensor \u00b7 below Blythe", order: 4, names: ["taylor"] },
 ];
 
@@ -63,55 +63,59 @@ function buildStations(json) {
 }
 
 function parseHeadgate(text) {
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  // Publication date ("Date of Publication: 7/3/2026 1:32 PM MST") — the first
+  // table (which has no weekday header before it) belongs to this date.
+  let pub = null;
+  const pm = text.match(/Date of Publication:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+  if (pm) pub = { y: +pm[3], mo: +pm[1] - 1, d: +pm[2] };
+
+  // Weekday date headers, with their position in the text. Each PRECEDES its table.
   const dates = [];
-  const dateRe = /(sunday|monday|tuesday|wednesday|thursday|friday|saturday),\s+([a-z]+)\s+(\d{1,2}),\s+(\d{4})/gi;
+  const dateRe = /(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s*,\s+([a-z]+)\s+(\d{1,2})\s*,\s+(\d{4})/gi;
   let dm;
-  while ((dm = dateRe.exec(text))) dates.push({ month: dm[2], day: +dm[3], year: +dm[4] });
+  while ((dm = dateRe.exec(text))) dates.push({ idx: dm.index, month: dm[2], day: +dm[3], year: +dm[4] });
 
-  const rowRe = /^(\d{1,2})\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)$/;
-  let tables = [], curr = null;
-  for (const l of lines) {
-    const m = l.match(rowRe);
-    if (!m) continue;
-    const hr = +m[1];
+  // Rows: hour + 4 flows + decimal MWH. \s+ tolerates numbers split across lines;
+  // the leading non-digit guard stops false matches starting inside a longer number
+  // (e.g. inside the Avg/Sum row's totals).
+  const rowRe = /(^|[^\d.])(\d{1,2})\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+\.\d+)/g;
+  const tables = [];
+  let curr = null, rm;
+  while ((rm = rowRe.exec(text))) {
+    const hr = +rm[2];
     if (hr < 1 || hr > 24) continue;
-    if (hr === 1 && curr && curr.length) { tables.push(curr); curr = []; }
-    if (!curr) curr = [];
-    curr.push({ hr, parker: +m[2], crit: +m[3] });
+    if (hr === 1) { if (curr && curr.rows.length) tables.push(curr); curr = { idx: rm.index, rows: [] }; }
+    if (!curr) curr = { idx: rm.index, rows: [] };
+    curr.rows.push({ hr, parker: +rm[3], crit: +rm[4] });
   }
-  if (curr && curr.length) tables.push(curr);
+  if (curr && curr.rows.length) tables.push(curr);
 
-  // Fallback: global scan in case the extractor didn't keep one row per line
-  if (!tables.length) {
-    const g = /(\d{1,2})\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+\.\d+)/g;
-    let mm, c2 = null;
-    while ((mm = g.exec(text))) {
-      const hr = +mm[1];
-      if (hr < 1 || hr > 24) continue;
-      if (hr === 1 && c2 && c2.length) { tables.push(c2); c2 = []; }
-      if (!c2) c2 = [];
-      c2.push({ hr, parker: +mm[2], crit: +mm[3] });
-    }
-    if (c2 && c2.length) tables.push(c2);
-  }
-
+  // Pair each table with the nearest date header BEFORE it; the first table
+  // falls back to the publication date.
   const downstream = [];
   let critSum = 0, critN = 0;
-  const n = Math.min(tables.length, dates.length);
-  for (let i = 0; i < n; i++) {
-    const d = dates[i];
-    for (const r of tables[i]) {
-      const t = mstEpoch(d.month, d.day, d.year, r.hr - 1);
-      if (t == null) continue;
-      downstream.push({ t, v: r.parker - r.crit });
+  const notes = [];
+  for (const tb of tables) {
+    let best = null;
+    for (const d of dates) { if (d.idx < tb.idx && (!best || d.idx > best.idx)) best = d; }
+    let t0 = null;
+    if (best) t0 = mstEpoch(best.month, best.day, best.year, 0);
+    else if (pub) t0 = Date.UTC(pub.y, pub.mo, pub.d, 0, 0, 0) + 7 * 3600 * 1000;
+    if (t0 == null) continue;
+    for (const r of tb.rows) {
+      downstream.push({ t: t0 + (r.hr - 1) * 3600 * 1000, v: r.parker - r.crit });
       critSum += r.crit; critN++;
     }
   }
   downstream.sort((a, b) => a.t - b.t);
+  // de-dupe any overlapping timestamps (keep last)
+  const seen = {};
+  for (const p of downstream) seen[p.t] = p.v;
+  const out = Object.keys(seen).map((t) => ({ t: +t, v: seen[t] })).sort((a, b) => a.t - b.t);
   return {
-    downstream,
-    note: downstream.length ? "Downstream flow = Parker inflow minus the CRIT canal diversion (avg ~" + Math.round(critSum / critN) + " cfs pulled out at Headgate)." : "",
+    downstream: out,
+    note: out.length ? "Downstream flow = Parker inflow minus the CRIT canal diversion (avg ~" + Math.round(critSum / critN) + " cfs pulled out at Headgate)." : "",
+    tableCount: tables.length,
   };
 }
 
@@ -132,9 +136,26 @@ async function main() {
     const r = await fetch(HG, { headers: { "User-Agent": "blythe-river-bot" } });
     if (!r.ok) throw new Error("HTTP " + r.status);
     const buf = Buffer.from(await r.arrayBuffer());
-    const parsed = parseHeadgate((await pdf(buf)).text);
-    out.headgate = parsed.downstream.length ? parsed : null;
-    if (!parsed.downstream.length) out.errors.push("headgate: parsed 0 rows (layout change?)");
+    // pdf-parse's default text glues same-line items together with no spaces,
+    // which destroys the number columns. This renderer keeps them separated.
+    const renderPage = (pageData) =>
+      pageData.getTextContent().then((tc) => {
+        let lastY, out = "";
+        for (const item of tc.items) {
+          if (lastY !== undefined && Math.abs(item.transform[5] - lastY) > 1) out += "\n";
+          else if (out && !out.endsWith("\n")) out += " ";
+          out += item.str;
+          lastY = item.transform[5];
+        }
+        return out;
+      });
+    const text = (await pdf(buf, { pagerender: renderPage })).text;
+    const parsed = parseHeadgate(text);
+    out.headgate = parsed.downstream.length ? { downstream: parsed.downstream, note: parsed.note } : null;
+    if (!parsed.downstream.length) {
+      out.errors.push("headgate: parsed 0 rows (layout change?)");
+      out.errors.push("headgate sample: " + text.slice(0, 500).replace(/\s+/g, " "));
+    }
   } catch (e) {
     out.errors.push("headgate: " + (e && e.message ? e.message : e));
   }
