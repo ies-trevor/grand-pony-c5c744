@@ -102,14 +102,7 @@
   <span class="updated"><span id="load-spin" class="spin" style="display:none"></span><span id="updated">Loading&hellip;</span><button id="refresh">Refresh</button></span>
 </header>
 
-<div class="strip">
-  <b>Parker Dam</b><span class="arrow">&#9656;</span>
-  <span class="you" id="strip-you">your house</span><span class="arrow">&#9656;</span>
-  <span>Water Wheel sensor</span><span class="arrow">&#9656;</span>
-  <span>diversion dam</span><span class="arrow">&#9656;</span>
-  <b>Blythe</b><span class="arrow">&#9656;</span>
-  <span>live USGS gauge</span>
-</div>
+<div class="strip" id="strip"></div>
 
 <div class="banner" id="banner"></div>
 
@@ -181,7 +174,7 @@
 </section>
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-05b (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-05c (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
   Place timing is estimated from Reclamation river miles and a ~4 mph pulse speed (both editable at the top of this file &mdash; calibrate against your own dock).<br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -202,26 +195,44 @@ var PROXIES = [
 ];
 
 // ============ EDIT ME ============
-// GitHub data relay: set to "yourusername/yourrepo" once the Action is in your repo (see README).
-// When set, the page reads hourly data the bot fetched server-side — no proxies needed.
-var GH_REPO = "";
+// GitHub data relay: your repo, so the page reads hourly data the bot fetched server-side.
+var GH_REPO = "ies-trevor/grand-pony-c5c744";
 var GH_BRANCH = "main";
-// How fast a release pulse travels downstream. Calibrate: watch one high pass Water Wheel,
+// How fast a release pulse travels downstream. Calibrate: watch one high pass a sensor,
 // note when it reaches your dock, adjust until the times match.
 var WAVE_MPH = 4;
-var WW_MILE = 151.6, HEADGATE_MILE = 176.2; // Reclamation river miles (documented)
-// Places along the reach. mile = river mile (higher = upstream). Lost Lake & Water Wheel are
-// from Reclamation's river-mile index; the rest are ESTIMATES in your listed order — adjust!
+// Documented Reclamation river miles (from the official river mile index, Aug 2001).
+var PARKER_MILE = 192.2, HEADGATE_MILE = 177.7, PVDAM_MILE = 133.8;
+var SENSORS = [
+  {key:"parker",     mile:192.2, label:"the Parker release"},
+  {key:"waterwheel", mile:152.0, label:"the Water Wheel sensor"},
+  {key:"belowpv",    mile:133.5, label:"the USGS gauge below the diversion dam"},
+  {key:"i10",        mile:121.3, label:"the I-10 sensor"},
+  {key:"taylor",     mile:106.6, label:"the Taylor Ferry sensor"}
+];
+// Places, upstream to downstream. mile = Reclamation river mile.
+// No "est" flag = documented in the official index. est:true = my estimate from your
+// ordering \u2014 nudge these numbers (1 mile \u2248 15 min of pulse travel at 4 mph).
 var PLACES = [
-  {key:"lostlake", name:"Lost Lake",            mile:162.3},
-  {key:"hidden",   name:"Hidden Valley",        mile:157.5},
-  {key:"house",    name:"My house",             mile:154.8},
-  {key:"ww",       name:"Water Wheel",          mile:151.6},
-  {key:"shaggy",   name:"Shaggy Tree",          mile:149.5},
-  {key:"ahaquin",  name:"Aha Quin",             mile:147.5},
-  {key:"paradise", name:"Paradise Point",       mile:145.5},
-  {key:"twin",     name:"Twin Palms",           mile:143.5},
-  {key:"rancho",   name:"Rancho Not So Grande", mile:140.5}
+  {key:"havasu",      name:"Lake Havasu",              mile:193.5, seg:"lake"},
+  {key:"parkerdam",   name:"Parker Dam",               mile:192.2},
+  {key:"strip",       name:"Parker Strip",             mile:184.5, est:true},
+  {key:"headgate",    name:"Headgate Rock Dam",        mile:177.7},
+  {key:"bigriver",    name:"Big River",                mile:171.1},
+  {key:"agneswilson", name:"Agnes Wilson Bridge",      mile:163.3},
+  {key:"lostlake",    name:"Lost Lake",                mile:159.8},
+  {key:"hidden",      name:"Hidden Valley",            mile:155.5, est:true},
+  {key:"house",       name:"My house",                 mile:154.8, est:true},
+  {key:"ww",          name:"Water Wheel",              mile:151.4},
+  {key:"shaggy",      name:"Shaggy Tree",              mile:149.0, est:true},
+  {key:"ahaquin",     name:"Aha Quin",                 mile:147.0, est:true},
+  {key:"twin",        name:"Twin Palms",               mile:144.5, est:true},
+  {key:"rancho",      name:"Rancho Not So Grande",     mile:141.5, est:true},
+  {key:"villa",       name:"Villa Shores",             mile:138.0, est:true},
+  {key:"pvdam",       name:"Palo Verde Diversion Dam", mile:133.8},
+  {key:"hiddenbeach", name:"Hidden Beaches Resort",    mile:131.0, est:true},
+  {key:"i10fwy",      name:"I-10 freeway",             mile:121.3},
+  {key:"mcintyre",    name:"McIntyre",                 mile:113.8}
 ];
 var PLACE_KEY = "blythe_place_v1";
 // =================================
@@ -232,12 +243,32 @@ function fetchT(u, ms){
   return fetch(u, {signal: c.signal}).then(function(r){ clearTimeout(to); return r; }, function(e){ clearTimeout(to); throw e; });
 }
 function currentPlace(){ var k = store.get(PLACE_KEY) || "house"; for(var i=0;i<PLACES.length;i++){ if(PLACES[i].key===k) return PLACES[i]; } return PLACES[0]; }
-function placeLagMs(p){ return (WW_MILE - p.mile) / WAVE_MPH * 3600 * 1000; }
-function headgateLagMs(p){ return (HEADGATE_MILE - p.mile) / WAVE_MPH * 3600 * 1000; }
-function lagLabel(p){
-  var m = Math.round(placeLagMs(p)/60000);
-  if(Math.abs(m) < 3) return "right at the Water Wheel sensor";
-  return "~" + Math.abs(m) + " min " + (m>0 ? "after" : "before") + " the Water Wheel sensor";
+function segFor(p){ if(p.seg) return p.seg; if(p.mile>HEADGATE_MILE) return "strip"; if(p.mile>=PVDAM_MILE) return "mid"; return "below"; }
+var SEG_REFS = { lake:["parker"], strip:["parker"], mid:["waterwheel"], below:["i10","belowpv","taylor"] };
+function sensorInfo(key){ for(var i=0;i<SENSORS.length;i++){ if(SENSORS[i].key===key) return SENSORS[i]; } return null; }
+function refFor(p){
+  var cands=SEG_REFS[segFor(p)]||["waterwheel"], best=null;
+  for(var i=0;i<cands.length;i++){
+    var sm=sensorInfo(cands[i]); if(!sm) continue;
+    var st=STATIONS.find(function(s){ return s.key===sm.key && (s.flow.length||s.stage.length); });
+    if(!st) continue;
+    var d=Math.abs(sm.mile-p.mile);
+    if(!best || d<best.d) best={st:st, mile:sm.mile, label:sm.label, key:sm.key, d:d};
+  }
+  if(!best){ var g=getPrimary(); if(g){ var smx=sensorInfo(g.key); best={st:g, mile:(smx?smx.mile:p.mile), label:(smx?smx.label:g.name), key:g.key, d:0}; } }
+  return best;
+}
+function lagMsFrom(refMile, p){ return (refMile - p.mile) / WAVE_MPH * 3600 * 1000; }
+function lagLabel2(ms, label){
+  var m = Math.round(ms/60000);
+  if(Math.abs(m) < 3) return "right at "+label;
+  return "~" + Math.abs(m) + " min " + (m>0 ? "after" : "before") + " " + label;
+}
+function avg24(series){ if(!series || !series.length) return null; var cut=Date.now()-24*3600*1000, s=0, n=0; series.forEach(function(pt){ if(pt.t>=cut){ s+=pt.v; n++; } }); return n ? s/n : null; }
+function divEst(){
+  var ww=STATIONS.find(function(s){return s.key==="waterwheel";}), bp=STATIONS.find(function(s){return s.key==="belowpv";});
+  var a=ww?avg24(ww.flow):null, b=bp?avg24(bp.flow):null;
+  return (a!=null && b!=null) ? Math.max(0, Math.round(a-b)) : null;
 }
 // try direct first (in case of CORS), then each proxy
 function raceOk(makers){
@@ -507,8 +538,8 @@ function renderCards(){
       '<div class="stamp">reading '+when+' MST \u00b7 '+link+'</div></div>';
   }).join("");
 }
-function buildRating(){
-  var ww=STATIONS.find(function(s){ return s.key==="waterwheel" && s.flow.length>=10 && s.stage.length>=10; });
+function buildRating(key){
+  var ww=STATIONS.find(function(s){ return s.key===key && s.flow.length>=10 && s.stage.length>=10; });
   if(!ww) return null;
   var sm={}; ww.stage.forEach(function(p){ sm[p.t]=p.v; });
   var pairs=[]; ww.flow.forEach(function(p){ if(sm[p.t]!=null) pairs.push({q:p.v, h:sm[p.t]}); });
@@ -522,21 +553,42 @@ function buildRating(){
     return null;
   };
 }
+function renderStrip(pl){
+  var el=document.getElementById("strip"); if(!el) return;
+  var anchors=[
+    {n:"Parker Dam", m:192.2}, {n:"Headgate", m:177.7}, {n:"Water Wheel sensor", m:152.0},
+    {n:"diversion dam", m:133.8}, {n:"I-10", m:121.3}
+  ];
+  var merged=false;
+  anchors.forEach(function(a){ if(Math.abs(a.m-pl.mile)<0.6){ a.you=true; a.n=pl.name; merged=true; } });
+  if(!merged) anchors.push({n:pl.name, m:pl.mile, you:true});
+  anchors.sort(function(a,b){ return b.m-a.m; });
+  el.innerHTML=anchors.map(function(a){
+    return a.you ? '<span class="you">'+esc(a.n)+'</span>' : '<span>'+esc(a.n)+'</span>';
+  }).join('<span class="arrow">\u25b8</span>');
+}
 function renderHero(){
-  var p=getPrimary(), pl=currentPlace();
+  var pl=currentPlace(), seg=segFor(pl), ref=refFor(pl);
   var elE=document.getElementById("hero-eyebrow"), elS=document.getElementById("hero-status"), elSub=document.getElementById("hero-sub"), elC=document.getElementById("hero-coming");
   elE.textContent="Near "+pl.name+" right now";
-  var sy=document.getElementById("strip-you"); if(sy) sy.textContent=pl.name;
-  if(!p){ elS.textContent="No reading"; elSub.textContent="No sensor is reporting yet \u2014 try Refresh."; elC.innerHTML=""; return; }
-  var series=p.flow.length?p.flow:p.stage, tr=trend(series), c=cur(series), f=cur(p.flow);
+  renderStrip(pl);
+  if(!ref || !ref.st){ elS.textContent="No reading"; elSub.textContent="No sensor is reporting yet \u2014 try Refresh."; elC.innerHTML=""; return; }
+  var p=ref.st, series=p.flow.length?p.flow:p.stage, tr=trend(series), c=cur(series), f=cur(p.flow);
+  var detail=(f?'<span class="mono">'+fmt(f.v)+' cfs</span>':'')+' \u00b7 as of '+azTime(c.t)+' MST';
+  if(seg==="lake"){
+    elS.innerHTML='<span style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+'</span> Dam release is '+TWORD[tr];
+    elSub.innerHTML='Lake Havasu sits <b style="color:var(--text)">above</b> Parker Dam, so it doesn\u2019t get the daily river tide \u2014 the lake stays near-steady while the dam decides what flows downstream: '+detail+'.';
+    elC.innerHTML="";
+    return;
+  }
   var lv=levelInfo(series), levelPhrase=lv?LEVELWORD[lv.word]:"", abl=stageAboveLow(p.stage), sw=stageSwing(p.stage);
   elS.innerHTML='<span style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+'</span> Water is '+TWORD[tr]+(levelPhrase?' \u00b7 '+levelPhrase:'');
-  var detail=(f?'<span class="mono">'+fmt(f.v)+' cfs</span>':'')+' \u00b7 as of '+azTime(c.t)+' MST';
-  var timing=(p.key==="waterwheel" && Math.abs(placeLagMs(pl))>=3*60000) ? ' \u00b7 pulses arrive at '+pl.name+' '+lagLabel(pl) : '';
+  var lag=lagMsFrom(ref.mile, pl);
+  var timing=(Math.abs(lag)>=3*60000) ? ' \u00b7 pulses arrive at '+pl.name+' '+lagLabel2(lag, ref.label) : ' \u00b7 from '+ref.label;
   if(abl!=null){ elSub.innerHTML='The water is about <b style="color:var(--text)" class="mono">+'+abl.toFixed(1)+' ft</b> above this week\u2019s low'+(sw!=null?' (it rises and falls ~'+sw.toFixed(1)+' ft over the week)':'')+' \u2014 '+detail+timing; }
-  else { elSub.innerHTML='Closest live source ('+p.name+') reads '+detail+timing; }
+  else { elSub.innerHTML='Closest live source reads '+detail+timing; }
   var parker=STATIONS.find(function(s){ return s.key==="parker" && s.flow.length; });
-  elC.innerHTML = parker ? ('Upstream at Parker, release is <b>'+TWORD[trend(parker.flow)]+'</b> ('+fmt(cur(parker.flow).v)+' cfs) \u2014 roughly what reaches you next.') : "";
+  elC.innerHTML = (parker && ref.key!=="parker") ? ('Upstream at Parker, release is <b>'+TWORD[trend(parker.flow)]+'</b> ('+fmt(cur(parker.flow).v)+' cfs) \u2014 roughly what reaches you next.') : "";
 }
 function renderReach(){
   var lead=document.getElementById("fc-lead"), now=document.getElementById("fc-now"), svg=document.getElementById("fc-chart"), skel=document.getElementById("fc-skel");
@@ -557,32 +609,50 @@ function renderReach(){
 }
 function renderHeadgate(){
   var lead=document.getElementById("hg-lead"), nextEl=document.getElementById("hg-next"), svg=document.getElementById("hg-chart"), noteEl=document.getElementById("hg-note"), skel=document.getElementById("hg-skel");
-  var d=(hgData && hgData.downstream)?clean(hgData.downstream):[];
-  if(skel) skel.style.display = (d.length || hgTried) ? "none" : "block";
-  if(!d.length){
+  var pl=currentPlace(), seg=segFor(pl);
+  var base=(hgData && hgData.downstream)?clean(hgData.downstream):[];
+  if(skel) skel.style.display = (base.length || hgTried) ? "none" : "block";
+  if(!base.length){
     svg.style.display="none"; nextEl.innerHTML=""; noteEl.textContent="";
     var hax=document.getElementById("hg-axis"); if(hax) hax.style.display="none";
     if(!hgTried){ lead.innerHTML='Loading Reclamation&rsquo;s Headgate Rock Dam schedule\u2026'; }
-    else if(hgErr){ lead.innerHTML='The live schedule couldn&rsquo;t be pulled this time. Your next highs and lows are in the <b style="color:var(--text)">tide table below</b>, projected from the recent rhythm. Official schedule: <a class="site-link" href="'+HG_PDF+'" target="_blank" rel="noopener">Headgate PDF \u2197</a>. Tip: the GitHub relay in the README makes this panel dependable.'; }
+    else if(hgErr){ lead.innerHTML='The live schedule couldn&rsquo;t be pulled this time. Your next highs and lows are in the <b style="color:var(--text)">tide table below</b>, projected from the recent rhythm. Official schedule: <a class="site-link" href="'+HG_PDF+'" target="_blank" rel="noopener">Headgate PDF \u2197</a>.'; }
     else { lead.innerHTML='The forecast PDF loaded but parsed no rows (Reclamation may have changed the layout). Raw schedule: <a class="site-link" href="'+HG_PDF+'" target="_blank" rel="noopener">Headgate PDF \u2197</a>.'; }
     return;
   }
-  var pl=currentPlace(), shift=headgateLagMs(pl);
+  // Pick the right water for this segment
+  var d=base, srcNote="", originMile=HEADGATE_MILE, originName="Headgate Rock Dam";
+  var hasParker=hgData.parker && hgData.parker.length;
+  if(seg==="strip" || seg==="lake"){
+    originMile=PARKER_MILE; originName="Parker Dam";
+    if(hasParker){ d=clean(hgData.parker); srcNote=" Full Parker release \u2014 this stretch is above the CRIT canal turnout."; }
+    else if(hgData.critAvg!=null){ d=base.map(function(p){ return {t:p.t, v:p.v+hgData.critAvg}; }); srcNote=" Approximated by adding the CRIT diversion (~"+fmt(hgData.critAvg)+" cfs) back in \u2014 update scripts/build-data.cjs for exact numbers."; }
+    else { srcNote=" Note: this stretch actually carries ~1,200 cfs more (it\u2019s above the CRIT turnout)."; }
+  } else if(seg==="below"){
+    var dv=divEst();
+    if(dv!=null && dv>0){ d=base.map(function(p){ return {t:p.t, v:Math.max(0, p.v-dv)}; }); srcNote=" Minus roughly what Palo Verde is diverting lately (~"+fmt(dv)+" cfs, estimated from the sensors)."; }
+    else { srcNote=" Levels here run lower than shown \u2014 Palo Verde diverts water above this point."; }
+  }
+  var shift=Math.max(seg==="lake"?0:-1e15, lagMsFrom(originMile, pl));
+  if(seg==="lake") shift=0;
   var arrival=d.map(function(p){ return {t:p.t+shift, v:p.v}; });
   var now=Date.now(), fut=arrival.filter(function(p){ return p.t >= now - 2*3600*1000; }), series=fut.length>=4?fut:arrival;
   var r=areaChart(svg, series, "var(--house)", true, "hg-axis", true);
-  var toFt=buildRating();
+  var ref=refFor(pl);
+  var toFt=(seg==="mid")?buildRating("waterwheel"):((seg==="below"&&ref)?buildRating(ref.key):null);
   function lvlTxt(v){
     var ft=toFt?toFt(v):null;
     return (ft!=null ? '~<b class="mono">+'+ft.toFixed(1)+' ft</b> ('+fmt(v)+' cfs)' : '~<b class="mono">'+fmt(v)+'</b> cfs');
   }
-  var ex=findTides(series).filter(function(e){ return e.t>now; });
-  var nh=ex.find(function(e){return e.type==="high";}), nl=ex.find(function(e){return e.type==="low";}), bits=[];
+  var ex=findTides(series).filter(function(e2){ return e2.t>now; });
+  var nh=ex.find(function(e2){return e2.type==="high";}), nl=ex.find(function(e2){return e2.type==="low";}), bits=[];
   if(nh) bits.push('next high '+lvlTxt(nh.v)+' around '+azTime(nh.t));
   if(nl) bits.push('next low '+lvlTxt(nl.v)+' around '+azTime(nl.t));
   nextEl.innerHTML=bits.join(" \u00b7 ");
   var ftLo=toFt?toFt(r.min):null, ftHi=toFt?toFt(r.max):null;
-  lead.innerHTML='Reclamation&rsquo;s projected releases from Headgate Rock Dam ('+Math.round(HEADGATE_MILE-pl.mile)+' river miles upstream), time-shifted to estimated arrival at <b style="color:var(--text)">'+pl.name+'</b> assuming a ~'+WAVE_MPH+' mph pulse. Dashed = schedule + travel estimate, not a reading. Range ahead: <b class="mono" style="color:var(--text)">'+fmt(r.min)+'</b>\u2013<b class="mono" style="color:var(--text)">'+fmt(r.max)+'</b> cfs'+((ftLo!=null&&ftHi!=null)?' (about <b class="mono" style="color:var(--text)">+'+ftLo.toFixed(1)+'</b> to <b class="mono" style="color:var(--text)">+'+ftHi.toFixed(1)+' ft</b> above the weekly low)':'')+'.';
+  var milesUp=Math.round(Math.abs(originMile-pl.mile));
+  var whereBit=(seg==="lake")?'released into the river just below the lake':(milesUp<1?'right here at the dam':milesUp+' river miles upstream');
+  lead.innerHTML='Reclamation&rsquo;s projected releases from '+originName+' ('+whereBit+'), time-shifted to estimated arrival at <b style="color:var(--text)">'+esc(pl.name)+'</b> assuming a ~'+WAVE_MPH+' mph pulse. Dashed = schedule + travel estimate, not a reading. Range ahead: <b class="mono" style="color:var(--text)">'+fmt(r.min)+'</b>\u2013<b class="mono" style="color:var(--text)">'+fmt(r.max)+'</b> cfs'+((ftLo!=null&&ftHi!=null)?' (about <b class="mono" style="color:var(--text)">+'+ftLo.toFixed(1)+'</b> to <b class="mono" style="color:var(--text)">+'+ftHi.toFixed(1)+' ft</b> above the weekly low)':'')+'.'+srcNote;
   noteEl.textContent=hgData.note||"";
 }
 
@@ -610,18 +680,23 @@ function medianPeriod(ex, type){
 }
 function renderTide(){
   var body=document.getElementById("tide-body"), lead=document.getElementById("tide-lead");
-  var p=getPrimary(), pl=currentPlace();
-  if(!p){ body.innerHTML = loadingNow ? '<tr><td colspan="3"><div class="skel skel-row"></div><div class="skel skel-row" style="width:70%"></div></td></tr>' : '<tr><td colspan="3" style="color:var(--muted)">Waiting for data\u2026</td></tr>'; return; }
-  var useStage=p.stage.length>=6, series=useStage?p.stage:p.flow, unit=useStage?"ft":"cfs";
-  var shift=(p.key==="waterwheel") ? placeLagMs(pl) : 0;
+  var pl=currentPlace(), seg=segFor(pl), ref=refFor(pl);
+  if(seg==="lake"){
+    lead.textContent="Lake Havasu is a reservoir \u2014 no daily tide up there. Pick a river spot to see highs and lows.";
+    body.innerHTML='<tr><td colspan="3" style="color:var(--muted)">The river tide starts below Parker Dam.</td></tr>';
+    return;
+  }
+  if(!ref || !ref.st){ body.innerHTML = loadingNow ? '<tr><td colspan="3"><div class="skel skel-row"></div><div class="skel skel-row" style="width:70%"></div></td></tr>' : '<tr><td colspan="3" style="color:var(--muted)">Waiting for data\u2026</td></tr>'; return; }
+  var p=ref.st, useStage=p.stage.length>=6, series=useStage?p.stage:p.flow;
+  var shift=lagMsFrom(ref.mile, pl);
   var wkLow=useStage ? Math.min.apply(null, series.map(function(x){return x.v;})) : null;
-  lead.textContent="At "+pl.name+(Math.abs(shift)>=3*60000 ? " \u2014 times shifted "+lagLabel(pl) : " \u2014 from the "+p.name+" sensor")+". Heights are above this week\u2019s low. Times are Arizona (MST).";
+  lead.textContent="At "+pl.name+" \u2014 "+(Math.abs(shift)>=3*60000 ? "times shifted "+lagLabel2(shift, ref.label) : "from "+ref.label)+". Heights are above this week\u2019s low. Times are Arizona (MST).";
   var ex=findTides(series);
   if(ex.length<2){ body.innerHTML='<tr><td colspan="3" style="color:var(--muted)">Not enough variation to detect a clear tide right now.</td></tr>'; return; }
   var now=Date.now(), rows=[];
-  ex.filter(function(e){ return e.t>now-30*3600*1000; }).slice(-4).forEach(function(e){ rows.push({type:e.type,t:e.t,v:e.v,expected:false}); });
+  ex.filter(function(e2){ return e2.t>now-30*3600*1000; }).slice(-4).forEach(function(e2){ rows.push({type:e2.type,t:e2.t,v:e2.v,expected:false}); });
   ["high","low"].forEach(function(type){
-    var per=medianPeriod(ex,type), last=ex.slice().reverse().find(function(e){return e.type===type;});
+    var per=medianPeriod(ex,type), last=ex.slice().reverse().find(function(e2){return e2.type===type;});
     if(per && last){ var t=last.t; for(var k=0;k<3 && rows.length<9;k++){ t+=per; if(t>now) rows.push({type:type,t:t,v:last.v,expected:true}); } }
   });
   rows.sort(function(a,b){return a.t-b.t;});
@@ -753,7 +828,13 @@ function loadAll(){
 }
 (function initPlaces(){
   var sel=document.getElementById("place-sel");
-  sel.innerHTML=PLACES.map(function(p){ return '<option value="'+p.key+'">'+p.name+'</option>'; }).join("");
+  var groups=[{seg:"lake",label:"The lake"},{seg:"strip",label:"Parker Strip (full release)"},{seg:"mid",label:"Headgate \u2192 diversion dam"},{seg:"below",label:"Below the diversion dam"}];
+  sel.innerHTML=groups.map(function(g){
+    var opts=PLACES.filter(function(p){ return segFor(p)===g.seg; }).map(function(p){
+      return '<option value="'+p.key+'">'+p.name+(p.est?" (est.)":"")+'</option>';
+    }).join("");
+    return opts ? '<optgroup label="'+g.label+'">'+opts+'</optgroup>' : "";
+  }).join("");
   sel.value=currentPlace().key;
   sel.addEventListener("change", function(){ store.set(PLACE_KEY, sel.value); rebuild(); });
 })();

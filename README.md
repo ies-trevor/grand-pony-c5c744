@@ -58,19 +58,21 @@ The website just reads that file. No proxies, no server to babysit, free.
   see it, the page fell back to the old proxy method (check GH_REPO spelling,
   repo visibility, and that the Action ran green).
 
-## Fixing the place list (please do this!)
+## The place list
 
-At the top of `index.html` there's a `PLACES` list. Each place has a river
-mile (higher number = further upstream). **Lost Lake (162.3) and Water Wheel
-(151.6) are from Reclamation's official river-mile index; the rest are my
-estimates based on the order you listed them.** If Shaggy Tree is actually
-upstream of Water Wheel, or the spacing is off, just change the numbers —
-one mile ≈ 15 minutes of pulse travel.
+The dropdown covers Lake Havasu down to McIntyre, grouped by which stretch of
+river each spot sits on, because the water behaves differently in each:
 
-Also near the top: `var WAVE_MPH = 4;` — how fast a dam pulse moves
-downstream. To calibrate: watch one high pass the Water Wheel sensor on the
-site, note when that high actually reaches your dock, and nudge the number
-until the predicted times match reality. Bigger number = pulses arrive sooner.
+- **The lake** — no daily tide; the page shows what the dam is releasing.
+- **Parker Strip** — gets the FULL Parker release (it's above the CRIT canal).
+- **Headgate → diversion dam** — Parker release minus the CRIT canal.
+- **Below the diversion dam** — same water minus what Palo Verde is pulling
+  out (the page estimates today's diversion from the sensors automatically).
+
+River miles marked "(est.)" in the dropdown are my estimates from the listed
+order; everything else is from Reclamation's official river-mile index. To
+correct an estimate, edit its `mile` number in the `PLACES` list at the top
+of `index.html` — one mile ≈ 15 minutes of pulse travel at 4 mph.
 
 ## Good to know
 
