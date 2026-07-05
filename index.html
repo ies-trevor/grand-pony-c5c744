@@ -177,7 +177,7 @@
 </section>
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-04a (v2)</span> &mdash; place picker \u00b7 GitHub data relay \u00b7 no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-05a (v2)</span> &mdash; place picker \u00b7 GitHub data relay \u00b7 no server functions.<br>
   Place timing is estimated from Reclamation river miles and a ~4 mph pulse speed (both editable at the top of this file \u2014 calibrate against your own dock).<br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -200,7 +200,7 @@ var PROXIES = [
 // ============ EDIT ME ============
 // GitHub data relay: set to "yourusername/yourrepo" once the Action is in your repo (see README).
 // When set, the page reads hourly data the bot fetched server-side — no proxies needed.
-var GH_REPO = "ies-trevor/grand-pony-c5c744";
+var GH_REPO = "";
 var GH_BRANCH = "main";
 // How fast a release pulse travels downstream. Calibrate: watch one high pass Water Wheel,
 // note when it reaches your dock, adjust until the times match.
@@ -236,28 +236,30 @@ function lagLabel(p){
   return "~" + Math.abs(m) + " min " + (m>0 ? "after" : "before") + " the Water Wheel sensor";
 }
 // try direct first (in case of CORS), then each proxy
+function raceOk(makers){
+  return new Promise(function(resolve, reject){
+    var pending=makers.length, settled=false;
+    if(!pending){ reject(new Error("no routes")); return; }
+    makers.forEach(function(mk){
+      mk().then(function(v){ if(!settled){ settled=true; resolve(v); } },
+                function(){ if(--pending===0 && !settled) reject(new Error("all fetch routes failed")); });
+    });
+  });
+}
 function fetchVia(url, asBuffer){
-  var attempts = [url];
-  PROXIES.forEach(function(p){ attempts.push(p(url)); });
-  var i = 0;
-  function next(){
-    if(i >= attempts.length) return Promise.reject(new Error("all fetch routes failed (proxy may be rate-limited)"));
-    var u = attempts[i++];
-    return fetchT(u, 12000).then(function(res){
-      if(!res.ok) throw new Error("HTTP "+res.status);
-      return asBuffer ? res.arrayBuffer() : res.text();
-    }).catch(function(){ return next(); });
-  }
-  return next();
+  var makers=[function(){ return fetchT(url, 8000).then(chk); }];
+  PROXIES.forEach(function(p){ makers.push(function(){ return fetchT(p(url), 8000).then(chk); }); });
+  function chk(res){ if(!res.ok) throw new Error("HTTP "+res.status); return asBuffer ? res.arrayBuffer() : res.text(); }
+  return raceOk(makers);
 }
 function b64ToBuf(b64){ var bin=atob(b64), n=bin.length, bytes=new Uint8Array(n); for(var i=0;i<n;i++) bytes[i]=bin.charCodeAt(i); return bytes.buffer; }
 function fetchPdf(url){
-  // base64-in-JSON first (most proxy-friendly for binary), then raw binary routes
-  return fetchT("https://api.allorigins.win/get?url=" + encodeURIComponent(url), 15000).then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }).then(function(j){
-    var c=j.contents||"", idx=c.indexOf("base64,");
-    if(idx<0) throw new Error("no PDF content");
-    return b64ToBuf(c.slice(idx+7));
-  }).catch(function(){ return fetchVia(url, true); });
+  var b64=function(){
+    return fetchT("https://api.allorigins.win/get?url="+encodeURIComponent(url), 10000)
+      .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+      .then(function(j){ var c=j.contents||"", idx=c.indexOf("base64,"); if(idx<0) throw new Error("no PDF content"); return b64ToBuf(c.slice(idx+7)); });
+  };
+  return raceOk([b64, function(){ return fetchVia(url, true); }]);
 }
 function levelInfo(series){
   if(!series || series.length < 4) return null;
@@ -355,7 +357,7 @@ function toPoints(s){
 var REACH = [
   { key:"parker",     name:"Parker Dam release",       role:"Release upstream \u00b7 early warning", order:0, names:["havasu","parker"], releaseType:"release" },
   { key:"waterwheel", name:"Water Wheel",  role:"Reference sensor \u00b7 this stretch", order:1, primary:true, names:["water wheel"] },
-  { key:"i10",        name:"Blythe (I-10 bridge)",      role:"Reclamation sensor \u00b7 at Blythe", order:2, names:["i-10","interstate 10","i10"] },
+  { key:"i10",        name:"Blythe (I-10 bridge)",      role:"Reclamation sensor \u00b7 at Blythe", order:2, names:["i-10","i 10","interstate","i10"] },
   { key:"taylor",     name:"Taylor Ferry",              role:"Reclamation sensor \u00b7 below Blythe", order:4, names:["taylor"] }
 ];
 function parseBor(json){
@@ -393,22 +395,36 @@ function pdfToLines(buf){
   });
 }
 function parseHeadgate(lines){
-  var dateRe=/(sunday|monday|tuesday|wednesday|thursday|friday|saturday),\s+([a-z]+)\s+(\d+),\s+(\d+)/i;
-  var dates=[]; lines.forEach(function(l){ var m=l.match(dateRe); if(m) dates.push({month:m[2],day:+m[3],year:+m[4]}); });
-  var rowRe=/^(\d{1,2})\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)$/;
-  var tables=[], curr=null;
-  lines.forEach(function(l){
-    var m=l.match(rowRe); if(!m) return;
-    var hr=+m[1]; if(hr<1||hr>24) return;
-    if(hr===1 && curr && curr.length){ tables.push(curr); curr=[]; }
-    if(!curr) curr=[];
-    curr.push({hr:hr, parker:+m[2], crit:+m[3]});
+  var text=lines.join("\n");
+  // First table (no weekday header before it) belongs to the publication date.
+  var pub=null, pm=text.match(/Date of Publication:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+  if(pm) pub={y:+pm[3], mo:+pm[1]-1, d:+pm[2]};
+  // Weekday headers PRECEDE their table; record positions.
+  var dates=[], dateRe=/(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s*,\s+([a-z]+)\s+(\d{1,2})\s*,\s+(\d{4})/gi, dm;
+  while((dm=dateRe.exec(text))) dates.push({idx:dm.index, month:dm[2], day:+dm[3], year:+dm[4]});
+  // hour + 4 flows + decimal MWH; leading non-digit guard blocks matches starting inside longer numbers.
+  var rowRe=/(^|[^\d.])(\d{1,2})\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+\.\d+)/g;
+  var tables=[], curr=null, rm;
+  while((rm=rowRe.exec(text))){
+    var hr=+rm[2]; if(hr<1||hr>24) continue;
+    if(hr===1){ if(curr && curr.rows.length) tables.push(curr); curr={idx:rm.index, rows:[]}; }
+    if(!curr) curr={idx:rm.index, rows:[]};
+    curr.rows.push({hr:hr, parker:+rm[3], crit:+rm[4]});
+  }
+  if(curr && curr.rows.length) tables.push(curr);
+  var downstream=[], critSum=0, critN=0;
+  tables.forEach(function(tb){
+    var best=null;
+    dates.forEach(function(d){ if(d.idx<tb.idx && (!best || d.idx>best.idx)) best=d; });
+    var t0=null;
+    if(best) t0=mstEpoch(best.month,best.day,best.year,0);
+    else if(pub) t0=Date.UTC(pub.y,pub.mo,pub.d,0,0,0)+7*3600*1000;
+    if(t0==null) return;
+    tb.rows.forEach(function(r){ downstream.push({t:t0+(r.hr-1)*3600*1000, v:r.parker-r.crit}); critSum+=r.crit; critN++; });
   });
-  if(curr && curr.length) tables.push(curr);
-  var downstream=[], critSum=0, critN=0, n=Math.min(tables.length, dates.length);
-  for(var i=0;i<n;i++){ var d=dates[i]; tables[i].forEach(function(r){ var t=mstEpoch(d.month,d.day,d.year,r.hr-1); if(t==null) return; downstream.push({t:t, v:r.parker-r.crit}); critSum+=r.crit; critN++; }); }
-  downstream.sort(function(a,b){ return a.t-b.t; });
-  return { downstream:downstream, note:(downstream.length? "Downstream flow = Parker inflow minus the CRIT canal diversion (avg ~"+Math.round(critSum/critN)+" cfs pulled out at Headgate)." : "") };
+  var seen={}; downstream.forEach(function(p){ seen[p.t]=p.v; });
+  var out=Object.keys(seen).map(function(t){ return {t:+t, v:seen[t]}; }).sort(function(a,b){ return a.t-b.t; });
+  return { downstream:out, note:(out.length? "Downstream flow = Parker inflow minus the CRIT canal diversion (avg ~"+Math.round(critSum/critN)+" cfs pulled out at Headgate)." : "") };
 }
 
 // ---------- state ----------
@@ -679,16 +695,17 @@ function loadRelay(){
 function loadAll(){
   if(loadingNow) return;
   setLoading(true);
-  var pU=loadUsgs();
+  var pU=loadUsgs().then(rebuild);
   var pR=loadRelay().then(function(j){
     if(j){
       relayInfo={t:new Date(j.generatedAt).getTime()};
       if(j.stations && j.stations.length){ borData={stations:j.stations}; borErr=null; borTried=true; }
       if(j.headgate && j.headgate.downstream && j.headgate.downstream.length){ hgData=j.headgate; hgErr=null; hgTried=true; }
     }
+    rebuild(); // paint whatever we have right now
     var tasks=[];
-    if(!borData) tasks.push(loadBor());
-    if(!hgData) tasks.push(loadHeadgate());
+    if(!borData) tasks.push(loadBor().then(rebuild));
+    if(!hgData) tasks.push(loadHeadgate().then(rebuild));
     return Promise.all(tasks);
   });
   function done(){
