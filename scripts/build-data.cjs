@@ -92,9 +92,8 @@ function parseHeadgate(text) {
 
   // Pair each table with the nearest date header BEFORE it; the first table
   // falls back to the publication date.
-  const downstream = [];
+  const downstream = [], parker = [];
   let critSum = 0, critN = 0;
-  const notes = [];
   for (const tb of tables) {
     let best = null;
     for (const d of dates) { if (d.idx < tb.idx && (!best || d.idx > best.idx)) best = d; }
@@ -103,17 +102,22 @@ function parseHeadgate(text) {
     else if (pub) t0 = Date.UTC(pub.y, pub.mo, pub.d, 0, 0, 0) + 7 * 3600 * 1000;
     if (t0 == null) continue;
     for (const r of tb.rows) {
-      downstream.push({ t: t0 + (r.hr - 1) * 3600 * 1000, v: r.parker - r.crit });
+      const t = t0 + (r.hr - 1) * 3600 * 1000;
+      downstream.push({ t, v: r.parker - r.crit });
+      parker.push({ t, v: r.parker });
       critSum += r.crit; critN++;
     }
   }
-  downstream.sort((a, b) => a.t - b.t);
-  // de-dupe any overlapping timestamps (keep last)
-  const seen = {};
-  for (const p of downstream) seen[p.t] = p.v;
-  const out = Object.keys(seen).map((t) => ({ t: +t, v: seen[t] })).sort((a, b) => a.t - b.t);
+  const dedupe = (arr) => {
+    const seen = {};
+    for (const p of arr) seen[p.t] = p.v;
+    return Object.keys(seen).map((t) => ({ t: +t, v: seen[t] })).sort((a, b) => a.t - b.t);
+  };
+  const out = dedupe(downstream), outP = dedupe(parker);
   return {
     downstream: out,
+    parker: outP,
+    critAvg: critN ? Math.round(critSum / critN) : null,
     note: out.length ? "Downstream flow = Parker inflow minus the CRIT canal diversion (avg ~" + Math.round(critSum / critN) + " cfs pulled out at Headgate)." : "",
     tableCount: tables.length,
   };
@@ -151,7 +155,7 @@ async function main() {
       });
     const text = (await pdf(buf, { pagerender: renderPage })).text;
     const parsed = parseHeadgate(text);
-    out.headgate = parsed.downstream.length ? { downstream: parsed.downstream, note: parsed.note } : null;
+    out.headgate = parsed.downstream.length ? { downstream: parsed.downstream, parker: parsed.parker, critAvg: parsed.critAvg, note: parsed.note } : null;
     if (!parsed.downstream.length) {
       out.errors.push("headgate: parsed 0 rows (layout change?)");
       out.errors.push("headgate sample: " + text.slice(0, 500).replace(/\s+/g, " "));
