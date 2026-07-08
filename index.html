@@ -132,7 +132,7 @@
 <section>
   <div class="section-panel">
     <div class="fc-head">
-      <h2>Your reach &mdash; recent (Water Wheel)</h2>
+      <h2 id="fc-title">Recent &mdash; nearest sensor</h2>
       <span class="fc-now" id="fc-now"></span>
     </div>
     <p class="lead" id="fc-lead">Loading Reclamation&rsquo;s hourly record at the Water Wheel reference sensor&hellip;</p>
@@ -159,7 +159,7 @@
 
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-08b (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-08c (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
   Place timing is estimated from Reclamation river miles and a ~4 mph pulse speed (both editable at the top of this file &mdash; calibrate against your own dock).<br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -189,11 +189,15 @@ var WAVE_MPH = 4;
 // Documented Reclamation river miles (from the official river mile index, Aug 2001).
 var PARKER_MILE = 192.2, HEADGATE_MILE = 177.7, PVDAM_MILE = 133.8;
 var SENSORS = [
-  {key:"parker",     mile:192.2, label:"the Parker release"},
-  {key:"waterwheel", mile:152.0, label:"the Water Wheel sensor"},
-  {key:"belowpv",    mile:133.5, label:"the USGS gauge below the diversion dam"},
-  {key:"i10",        mile:121.3, label:"the I-10 sensor"},
-  {key:"taylor",     mile:106.6, label:"the Taylor Ferry sensor"}
+  {key:"parker",       mile:192.2, label:"the Parker release"},
+  {key:"parkergage",   mile:175.3, label:"the Parker gage (below Headgate)"},
+  {key:"waterwheel",   mile:152.0, label:"the Water Wheel sensor"},
+  {key:"belowpv",      mile:133.5, label:"the USGS gauge below the diversion dam"},
+  {key:"i10",          mile:121.3, label:"the I-10 sensor"},
+  {key:"mcintyrepark", mile:113.75, label:"the McIntyre Park sensor"},
+  {key:"taylor",       mile:106.6, label:"the Taylor Ferry sensor"},
+  {key:"oxbow",        mile:93.6,  label:"the Oxbow Bridge sensor"},
+  {key:"cibola",       mile:87.3,  label:"the Cibola gage"}
 ];
 // Places, upstream to downstream. mile = Reclamation river mile — documented in
 // the official river-mile index or computed from your GPS pins projected between
@@ -234,7 +238,7 @@ function fetchT(u, ms){
 }
 function currentPlace(){ var k = store.get(PLACE_KEY) || "ww"; for(var i=0;i<PLACES.length;i++){ if(PLACES[i].key===k) return PLACES[i]; } for(var j=0;j<PLACES.length;j++){ if(PLACES[j].key==="ww") return PLACES[j]; } return PLACES[0]; }
 function segFor(p){ if(p.seg) return p.seg; if(p.mile>HEADGATE_MILE) return "strip"; if(p.mile>=PVDAM_MILE) return "mid"; return "below"; }
-var SEG_REFS = { lake:["parker"], strip:["parker"], mid:["waterwheel"], below:["i10","belowpv","taylor"] };
+var SEG_REFS = { lake:["parker"], strip:["parker"], mid:["parkergage","waterwheel"], below:["i10","belowpv","mcintyrepark","taylor","oxbow","cibola"] };
 function sensorInfo(key){ for(var i=0;i<SENSORS.length;i++){ if(SENSORS[i].key===key) return SENSORS[i]; } return null; }
 function refFor(p){
   var cands=SEG_REFS[segFor(p)]||["waterwheel"], best=null;
@@ -406,10 +410,14 @@ function toPoints(s){
     .sort(function(a,b){ return a.t-b.t; });
 }
 var REACH = [
-  { key:"parker",     name:"Parker Dam release",       role:"Release upstream \u00b7 early warning", order:0, names:["havasu","parker"], releaseType:"release" },
-  { key:"waterwheel", name:"Water Wheel",  role:"Reference sensor \u00b7 this stretch", order:1, primary:true, names:["water wheel"] },
-  { key:"i10",        name:"Blythe (I-10 bridge)",      role:"Reclamation sensor \u00b7 at Blythe", order:2, names:["i-10","i 10","interstate","i10"] },
-  { key:"taylor",     name:"Taylor Ferry",              role:"Reclamation sensor \u00b7 below Blythe", order:4, names:["taylor"] }
+  { key:"parker",       name:"Parker Dam release", role:"Release upstream \u00b7 early warning", order:0, names:["havasu"], releaseType:"release" },
+  { key:"parkergage",   name:"Parker gage",   role:"Below Headgate \u00b7 upper reach", order:1, names:["parker gage"] },
+  { key:"waterwheel",   name:"Water Wheel",   role:"Reference sensor \u00b7 mid reach", order:2, primary:true, names:["water wheel"] },
+  { key:"i10",          name:"Blythe (I-10 bridge)", role:"Reclamation sensor \u00b7 at Blythe", order:3, names:["i-10","i 10","interstate","i10"] },
+  { key:"mcintyrepark", name:"McIntyre Park", role:"Reclamation sensor \u00b7 south of Blythe", order:5, names:["mcintyre"] },
+  { key:"taylor",       name:"Taylor Ferry",  role:"Reclamation sensor \u00b7 below Blythe", order:6, names:["taylor"] },
+  { key:"oxbow",        name:"Oxbow Bridge",  role:"Reclamation sensor \u00b7 Cibola reach", order:7, names:["oxbow"] },
+  { key:"cibola",       name:"Cibola gage",   role:"Reclamation sensor \u00b7 Cibola reach", order:8, names:["cibola"] }
 ];
 function parseBor(json){
   var series = json.Series || [];
@@ -581,20 +589,23 @@ function renderHero(){
   elC.innerHTML = (parker && ref.key!=="parker") ? ('Upstream at Parker, release is <b>'+TWORD[trend(parker.flow)]+'</b> ('+fmt(cur(parker.flow).v)+' cfs) \u2014 roughly what reaches you next.') : "";
 }
 function renderReach(){
-  var lead=document.getElementById("fc-lead"), now=document.getElementById("fc-now"), svg=document.getElementById("fc-chart"), skel=document.getElementById("fc-skel");
-  var ww=STATIONS.find(function(s){ return s.key==="waterwheel" && s.flow.length; });
-  if(skel) skel.style.display = (ww || borTried) ? "none" : "block";
-  if(ww){
-    var c=cur(ww.flow);
-    now.innerHTML='Now at Water Wheel <b class="mono">'+fmt(c.v)+' cfs</b> \u00b7 '+azTime(c.t)+' MST';
-    var r=areaChart(svg, ww.flow, "var(--water)", false, "fc-axis", false);
-    lead.innerHTML='The hourly record at the Water Wheel sensor \u2014 the reference point for every place in the picker \u2014 over the last 7 days. Flow swings between <b class="mono" style="color:var(--text)">'+fmt(r.min)+'</b> and <b class="mono" style="color:var(--text)">'+fmt(r.max)+'</b> cfs, in a daily rhythm that repeats closely.';
+  var lead=document.getElementById("fc-lead"), now=document.getElementById("fc-now"), svg=document.getElementById("fc-chart"), skel=document.getElementById("fc-skel"), title=document.getElementById("fc-title");
+  var pl=currentPlace(), ref=refFor(pl);
+  var st=(ref && ref.st && ref.st.flow.length) ? ref.st : null;
+  if(skel) skel.style.display = (st || borTried) ? "none" : "block";
+  if(title) title.textContent = "Recent \u2014 " + (st ? st.name + " sensor" : "nearest sensor");
+  if(st){
+    var c=cur(st.flow);
+    now.innerHTML='Now at '+esc(st.name)+' <b class="mono">'+fmt(c.v)+' cfs</b> \u00b7 '+azTime(c.t)+' MST';
+    var r=areaChart(svg, st.flow, "var(--water)", false, "fc-axis", false);
+    var d=Math.abs(ref.mile-pl.mile);
+    lead.innerHTML='The last 7 days at '+ref.label+(d>=0.5 ? ' \u2014 the closest live sensor to '+esc(pl.name)+' ('+d.toFixed(0)+' river mi away)' : ' \u2014 right at '+esc(pl.name))+'. Flow swings between <b class="mono" style="color:var(--text)">'+fmt(r.min)+'</b> and <b class="mono" style="color:var(--text)">'+fmt(r.max)+'</b> cfs in a daily rhythm.';
   } else {
     svg.style.display="none"; now.innerHTML="";
     var fax=document.getElementById("fc-axis"); if(fax) fax.style.display="none";
-    if(!borTried){ lead.innerHTML='Loading Reclamation&rsquo;s hourly record at the Water Wheel reference sensor&hellip;'; }
-    else if(borErr){ lead.innerHTML='Reach feed error &mdash; <span class="mono">'+esc(borErr)+'</span>. The relay or proxy may be busy; try Refresh in a minute. The live gauge and tide table still work.'; }
-    else { lead.innerHTML='The reach feed responded but had no Water Wheel site. Sites returned: <span class="mono">'+esc((borData&&borData.stations||[]).map(function(s){return s.key;}).join(", ")||"none")+'</span>.'; }
+    if(!borTried){ lead.innerHTML='Loading Reclamation&rsquo;s hourly record\u2026'; }
+    else if(borErr){ lead.innerHTML='Reach feed error &mdash; <span class="mono">'+esc(borErr)+'</span>. The relay or proxy may be busy; try Refresh in a minute.'; }
+    else { lead.innerHTML='No nearby sensor is reporting for this spot right now.'; }
   }
 }
 function forecastSeriesFor(pl){
