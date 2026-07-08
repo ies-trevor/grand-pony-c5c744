@@ -159,7 +159,7 @@
 
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-08h (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-08i (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
   Place timing is estimated from Reclamation river miles and the pulse travel speed (default ~4 mph, editable at the top of this file).<span id="cal-note"></span><br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -619,7 +619,11 @@ function renderHero(){
   if(abl!=null){ elSub.innerHTML='The water is about <b style="color:var(--text)" class="mono">+'+abl.toFixed(1)+' ft</b> above this week\u2019s low'+(sw!=null?' (it rises and falls ~'+sw.toFixed(1)+' ft over the week)':'')+' \u2014 '+detail+timing; }
   else { elSub.innerHTML='Closest live source reads '+detail+timing; }
   var parker=STATIONS.find(function(s){ return s.key==="parker" && s.flow.length; });
-  elC.innerHTML = (parker && ref.key!=="parker") ? ('Upstream at Parker, release is <b>'+TWORD[trend(parker.flow)]+'</b> ('+fmt(cur(parker.flow).v)+' cfs) \u2014 roughly what reaches you next.') : "";
+  if(parker && ref.key!=="parker"){
+    var lagH=(PARKER_MILE - pl.mile)/WAVE_MPH;
+    var eta=lagH<1.5 ? "~"+Math.round(lagH*60)+" min" : "~"+Math.round(lagH)+" h";
+    elC.innerHTML='Upstream at Parker, release is <b>'+TWORD[trend(parker.flow)]+'</b> ('+fmt(cur(parker.flow).v)+' cfs) \u2014 that water reaches '+esc(pl.name)+' in '+eta+'.';
+  } else { elC.innerHTML=""; }
 }
 function renderReach(){
   var lead=document.getElementById("fc-lead"), now=document.getElementById("fc-now"), svg=document.getElementById("fc-chart"), skel=document.getElementById("fc-skel"), title=document.getElementById("fc-title");
@@ -666,8 +670,10 @@ function forecastSeriesFor(pl){
     if(seg==="below"){
       var dv=divEst();
       if(dv && dv.cfs>0){
-        d=d.map(function(p){ return {t:p.t, v:Math.max(0, p.v-dv.cfs)}; });
+        var clamped=0;
+        d=d.map(function(p){ if(p.v-dv.cfs<0) clamped++; return {t:p.t, v:Math.max(0, p.v-dv.cfs)}; });
         srcNote=dv.measured ? " Minus the measured Palo Verde Canal diversion (~"+fmt(dv.cfs)+" cfs \u00b7 USGS canal gauge)." : " Minus roughly what Palo Verde is diverting lately (~"+fmt(dv.cfs)+" cfs, estimated from the sensors).";
+        if(clamped>0) srcNote += " During the deepest lows this simple subtraction bottoms out near zero \u2014 the real channel keeps some water (drains return flow), so treat those hours as \u201cvery low,\u201d not dry.";
       }
       else { srcNote=" Levels here run lower than shown \u2014 Palo Verde diverts water above this point."; }
     }
