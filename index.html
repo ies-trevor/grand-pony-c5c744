@@ -159,8 +159,8 @@
 
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-08c (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
-  Place timing is estimated from Reclamation river miles and a ~4 mph pulse speed (both editable at the top of this file &mdash; calibrate against your own dock).<br>
+  <span style="color:var(--water)">Build 2026-07-08e (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  Place timing is estimated from Reclamation river miles and the pulse travel speed (default ~4 mph, editable at the top of this file).<span id="cal-note"></span><br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
 
@@ -169,8 +169,8 @@
 try { if (window["pdfjsLib"]) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; } catch(e){}
 
 // ---------- sources ----------
-var USGS_ID = "09429100";
-var USGS_API = "https://waterservices.usgs.gov/nwis/iv/?format=json&sites=" + USGS_ID + "&parameterCd=00060,00065&period=P7D&siteStatus=all";
+var USGS_ID = "09429100", CANAL_ID = "09429000";
+var USGS_API = "https://waterservices.usgs.gov/nwis/iv/?format=json&sites=" + USGS_ID + "," + CANAL_ID + "&parameterCd=00060,00065&period=P7D&siteStatus=all";
 var BOR_JSON = "https://www.usbr.gov/lc/region/g4000/riverops/webreports/hourlyweb.json";
 var HG_PDF   = "https://www.usbr.gov/lc/region/g4000/hourly/HeadgateReport.pdf";
 var PROXIES = [
@@ -260,9 +260,13 @@ function lagLabel2(ms, label){
 }
 function avg24(series){ if(!series || !series.length) return null; var cut=Date.now()-24*3600*1000, s=0, n=0; series.forEach(function(pt){ if(pt.t>=cut){ s+=pt.v; n++; } }); return n ? s/n : null; }
 function divEst(){
+  if(usgsData && usgsData[CANAL_ID] && usgsData[CANAL_ID]["00060"] && usgsData[CANAL_ID]["00060"].length){
+    var c=avg24(clean(usgsData[CANAL_ID]["00060"]));
+    if(c!=null && c>=0) return {cfs:Math.round(c), measured:true};
+  }
   var ww=STATIONS.find(function(s){return s.key==="waterwheel";}), bp=STATIONS.find(function(s){return s.key==="belowpv";});
   var a=ww?avg24(ww.flow):null, b=bp?avg24(bp.flow):null;
-  return (a!=null && b!=null) ? Math.max(0, Math.round(a-b)) : null;
+  return (a!=null && b!=null) ? {cfs:Math.max(0, Math.round(a-b)), measured:false} : null;
 }
 // try direct first (in case of CORS), then each proxy
 function raceOk(makers){
@@ -421,6 +425,7 @@ var REACH = [
 ];
 function parseBor(json){
   var series = json.Series || [];
+  var hav = toPoints(findSeries(series, ["havasu"], "elevation"));
   var stations = [];
   REACH.forEach(function(def){
     var flow, stage=[];
@@ -575,7 +580,13 @@ function renderHero(){
   var detail=(f?'<span class="mono">'+fmt(f.v)+' cfs</span>':'')+' \u00b7 as of '+azTime(c.t)+' MST';
   if(seg==="lake"){
     elS.innerHTML='<span style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+'</span> Dam release is '+TWORD[tr];
-    elSub.innerHTML='Lake Havasu sits <b style="color:var(--text)">above</b> Parker Dam, so it doesn\u2019t get the daily river tide \u2014 the lake stays near-steady while the dam decides what flows downstream: '+detail+'.';
+    var lakeBit='';
+    if(havasuData && havasuData.length){
+      var eN=havasuData[havasuData.length-1].v;
+      var eLo=Math.min.apply(null, havasuData.map(function(x){return x.v;})), eHi=Math.max.apply(null, havasuData.map(function(x){return x.v;}));
+      lakeBit=' Lake elevation <b style="color:var(--text)" class="mono">'+eN.toFixed(2)+' ft</b> \u2014 it has moved only ~'+(eHi-eLo).toFixed(2)+' ft all week.';
+    }
+    elSub.innerHTML='Lake Havasu sits <b style="color:var(--text)">above</b> Parker Dam, so it doesn\u2019t get the daily river tide.'+lakeBit+' What matters downstream is the release: '+detail+'.';
     elC.innerHTML="";
     return;
   }
@@ -609,21 +620,28 @@ function renderReach(){
   }
 }
 function forecastSeriesFor(pl){
-  if(!hgData || !hgData.downstream || !hgData.downstream.length) return null;
-  var seg=segFor(pl), base=clean(hgData.downstream);
-  if(!base.length) return null;
-  var d=base, srcNote="", originMile=HEADGATE_MILE, originName="Headgate Rock Dam";
-  var hasParker=hgData.parker && hgData.parker.length;
+  var seg=segFor(pl);
+  var d=null, srcNote="", originMile=HEADGATE_MILE, originName="Headgate Rock Dam";
+  var hg=(hgData && hgData.downstream && hgData.downstream.length) ? hgData : null;
   if(seg==="strip" || seg==="lake"){
     originMile=PARKER_MILE; originName="Parker Dam";
-    if(hasParker){ d=clean(hgData.parker); srcNote=" Full Parker release \u2014 this stretch is above the CRIT canal turnout."; }
-    else if(hgData.critAvg!=null){ d=base.map(function(p){ return {t:p.t, v:p.v+hgData.critAvg}; }); srcNote=" Approximated by adding the CRIT diversion (~"+fmt(hgData.critAvg)+" cfs) back in \u2014 update scripts/build-data.cjs for exact numbers."; }
-    else { srcNote=" Note: this stretch actually carries ~1,200 cfs more (it\u2019s above the CRIT turnout)."; }
-  } else if(seg==="below"){
-    var dv=divEst();
-    if(dv!=null && dv>0){ d=base.map(function(p){ return {t:p.t, v:Math.max(0, p.v-dv)}; }); srcNote=" Minus roughly what Palo Verde is diverting lately (~"+fmt(dv)+" cfs, estimated from the sensors)."; }
-    else { srcNote=" Levels here run lower than shown \u2014 Palo Verde diverts water above this point."; }
+    if(psData && psData.length){ d=clean(psData); srcNote=" Parker Dam\u2019s own published schedule \u2014 full release, straight from the source."; }
+    else if(hg && hg.parker && hg.parker.length){ d=clean(hg.parker); srcNote=" Full Parker release \u2014 this stretch is above the CRIT canal turnout."; }
+    else if(hg && hg.critAvg!=null){ d=clean(hg.downstream).map(function(p){ return {t:p.t, v:p.v+hg.critAvg}; }); srcNote=" Approximated by adding the CRIT diversion (~"+fmt(hg.critAvg)+" cfs) back in."; }
+    else if(hg){ d=clean(hg.downstream); srcNote=" Note: this stretch actually carries ~1,200 cfs more (it\u2019s above the CRIT turnout)."; }
+  } else {
+    if(!hg) return null;
+    d=clean(hg.downstream);
+    if(seg==="below"){
+      var dv=divEst();
+      if(dv && dv.cfs>0){
+        d=d.map(function(p){ return {t:p.t, v:Math.max(0, p.v-dv.cfs)}; });
+        srcNote=dv.measured ? " Minus the measured Palo Verde Canal diversion (~"+fmt(dv.cfs)+" cfs \u00b7 USGS canal gauge)." : " Minus roughly what Palo Verde is diverting lately (~"+fmt(dv.cfs)+" cfs, estimated from the sensors).";
+      }
+      else { srcNote=" Levels here run lower than shown \u2014 Palo Verde diverts water above this point."; }
+    }
   }
+  if(!d || !d.length) return null;
   var shift=(seg==="lake") ? 0 : lagMsFrom(originMile, pl);
   return { arrival:d.map(function(p){ return {t:p.t+shift, v:p.v}; }), srcNote:srcNote, originMile:originMile, originName:originName, seg:seg };
 }
@@ -756,7 +774,7 @@ function loadUsgs(){
     .catch(function(e){ document.getElementById("updated").textContent="Couldn\u2019t update"; banner.style.display="block"; banner.innerHTML="Couldn\u2019t reach the USGS service. The gauge link in the card opens it directly."; });
 }
 function loadBor(){
-  return fetchVia(BOR_JSON, false).then(function(txt){ borData=parseBor(JSON.parse(txt)); borErr=null; borTried=true; })
+  return fetchVia(BOR_JSON, false).then(function(txt){ borData=parseBor(JSON.parse(txt)); if(!havasuData && borData.havasu) havasuData=borData.havasu; borErr=null; borTried=true; })
     .catch(function(e){ borErr=(e&&e.message?e.message:String(e)); borData=null; borTried=true; });
 }
 function loadHeadgate(){
@@ -764,7 +782,7 @@ function loadHeadgate(){
     .catch(function(e){ hgErr=(e&&e.message?e.message:String(e)); hgData=null; hgTried=true; });
 }
 // GitHub relay: hourly data the Action committed, served with CORS from raw.githubusercontent
-var relayInfo=null, loadingNow=false;
+var relayInfo=null, loadingNow=false, psData=null, havasuData=null;
 function setLoading(on){
   loadingNow=on;
   var s=document.getElementById("load-spin"); if(s) s.style.display=on?"inline-block":"none";
@@ -793,8 +811,15 @@ function loadAll(){
   var pR=loadRelay().then(function(j){
     if(j){
       relayInfo={t:new Date(j.generatedAt).getTime()};
+      if(j.calibration && j.calibration.waveMph>=1 && j.calibration.waveMph<=12){
+        WAVE_MPH=j.calibration.waveMph;
+        var cn=document.getElementById("cal-note");
+        if(cn) cn.textContent=" Currently auto-measured at ~"+WAVE_MPH+" mph by cross-checking the live sensors.";
+      }
       if(j.stations && j.stations.length){ borData={stations:j.stations}; borErr=null; borTried=true; }
       if(j.headgate && j.headgate.downstream && j.headgate.downstream.length){ hgData=j.headgate; hgErr=null; hgTried=true; }
+      if(j.parkerSchedule && j.parkerSchedule.points && j.parkerSchedule.points.length){ psData=j.parkerSchedule.points; }
+      if(j.havasu && j.havasu.elev && j.havasu.elev.length){ havasuData=j.havasu.elev; }
     }
     rebuild(); // paint whatever we have right now
     var tasks=[];
