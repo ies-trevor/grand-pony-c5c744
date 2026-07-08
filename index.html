@@ -68,9 +68,6 @@
   .pill.high{background:#12313a; color:#7fe3d6}
   .pill.low{background:#2a2114; color:#f2c98a}
   .expected{color:var(--muted); font-style:italic}
-  .alert-row{display:flex; flex-wrap:wrap; align-items:center; gap:10px; font-size:14px}
-  .alert-row select,.alert-row input[type=number]{background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:14px}
-  .alert-row input[type=number]{width:110px}
   .note{color:var(--muted); font-size:12px; margin-top:10px}
   .banner{background:#2a1f14; border:1px solid #6b4a1e; color:#f0c98a; border-radius:10px; padding:12px 16px; font-size:13px; margin-bottom:18px; display:none}
   .fire{background:#12313a; border:1px solid #2f6b63; color:#9fe7db; border-radius:10px; padding:12px 16px; font-size:14px; margin-top:12px; display:none}
@@ -82,6 +79,9 @@
   .chart-skel{height:120px; margin:6px 0 4px}
   .axis{position:relative; height:15px; margin-top:2px; font-size:11px; color:var(--muted); display:none}
   .axis span{position:absolute; top:0; white-space:nowrap}
+  body.simple .adv-only{display:none}
+  #mode-btn{background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:8px; padding:5px 10px; font-size:12px; cursor:pointer}
+  #mode-btn:hover{color:var(--text)}
   .skel-row{height:14px; margin:10px 0}
   @media (prefers-reduced-motion: no-preference){
     .spin{animation:spin .9s linear infinite}
@@ -99,7 +99,7 @@
   <span class="coords">Parker Dam &rarr; Blythe</span>
   <label class="coords" for="place-sel">Showing</label>
   <select id="place-sel" class="place"></select>
-  <span class="updated"><span id="load-spin" class="spin" style="display:none"></span><span id="updated">Loading&hellip;</span><button id="refresh">Refresh</button></span>
+  <span class="updated"><span id="load-spin" class="spin" style="display:none"></span><span id="updated">Loading&hellip;</span><button id="mode-btn">Advanced</button><button id="refresh">Refresh</button></span>
 </header>
 
 <div class="strip" id="strip"></div>
@@ -113,7 +113,7 @@
   <div class="coming" id="hero-coming"></div>
 </div>
 
-<div class="grid" id="grid"><div class="card skel skel-card"></div><div class="card skel skel-card"></div><div class="card skel skel-card"></div></div>
+<div class="grid adv-only" id="grid"><div class="card skel skel-card"></div><div class="card skel skel-card"></div><div class="card skel skel-card"></div></div>
 
 <section>
   <div class="section-panel" style="border-left:3px solid var(--house)">
@@ -156,25 +156,10 @@
   </div>
 </section>
 
-<section>
-  <div class="section-panel">
-    <h2>Alert me when the river crosses a level</h2>
-    <p class="lead">Pick a sensor, a direction, and a level. While this page is open, you&rsquo;ll get a notification the moment it crosses.</p>
-    <div class="alert-row">
-      <label><input type="checkbox" id="al-on"> Enabled</label>
-      <select id="al-gauge"></select>
-      <select id="al-metric"><option value="flow">flow (cfs)</option><option value="stage">stage (ft)</option></select>
-      <select id="al-dir"><option value="above">rises above</option><option value="below">drops below</option></select>
-      <input type="number" id="al-level" placeholder="e.g. 8000" step="any">
-      <button id="al-save">Save alert</button>
-    </div>
-    <div class="fire" id="al-fire"></div>
-    <div class="note" id="al-note">Browser notifications fire only while this page is open. Keep it pinned in a tab or add it to your phone&rsquo;s home screen.</div>
-  </div>
-</section>
+
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-05d (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-05e (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
   Place timing is estimated from Reclamation river miles and a ~4 mph pulse speed (both editable at the top of this file &mdash; calibrate against your own dock).<br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -196,7 +181,7 @@ var PROXIES = [
 
 // ============ EDIT ME ============
 // GitHub data relay: your repo, so the page reads hourly data the bot fetched server-side.
-var GH_REPO = "ies-trevor/grand-pony-c5c744";
+var GH_REPO = "ies-trevor/Blythe-River-Reach";
 var GH_BRANCH = "main";
 // How fast a release pulse travels downstream. Calibrate: watch one high pass a sensor,
 // note when it reaches your dock, adjust until the times match.
@@ -497,7 +482,7 @@ function rebuild(){
   if(usgsData && usgsData[USGS_ID]){ st.push({ key:"belowpv", name:"Below Palo Verde Dam", role:"Live USGS \u00b7 below the diversion", order:3, primary:false, source:"USGS", link:"https://waterdata.usgs.gov/monitoring-location/USGS-"+USGS_ID+"/", flow:clean(usgsData[USGS_ID]["00060"]||[]), stage:clean(usgsData[USGS_ID]["00065"]||[]) }); }
   st.sort(function(a,b){ return (a.order==null?9:a.order)-(b.order==null?9:b.order); });
   STATIONS=st;
-  renderCards(); renderHero(); renderHeadgate(); renderReach(); renderTide(); populateAlertGauges(); evalAlert();
+  renderCards(); renderHero(); renderHeadgate(); renderReach(); renderTide();
 }
 function getPrimary(){
   return STATIONS.find(function(s){ return s.primary && s.flow.length; })
@@ -732,46 +717,7 @@ function renderTide(){
   }).join("");
 }
 
-// ---------- alerts ----------
-var AL_KEY="blythe_alert_v2";
-function populateAlertGauges(){
-  var sel=document.getElementById("al-gauge");
-  var opts=STATIONS.filter(function(s){ return s.flow.length||s.stage.length; });
-  var prev=sel.value;
-  sel.innerHTML=opts.map(function(s){ return '<option value="'+s.key+'">'+s.name+'</option>'; }).join("");
-  var saved=store.get(AL_KEY);
-  if(saved && opts.some(function(s){return s.key===saved.gauge;})) sel.value=saved.gauge;
-  else if(prev && opts.some(function(s){return s.key===prev;})) sel.value=prev;
-  if(saved){
-    document.getElementById("al-on").checked=!!saved.enabled;
-    document.getElementById("al-metric").value=saved.metric||"flow";
-    document.getElementById("al-dir").value=saved.dir||"above";
-    if(saved.level!=null && document.getElementById("al-level").value==="") document.getElementById("al-level").value=saved.level;
-  }
-}
-function alertValue(cfg){ var s=STATIONS.find(function(x){ return x.key===cfg.gauge; }); if(!s) return null; var c=cur(cfg.metric==="stage"?s.stage:s.flow); return c?c.v:null; }
-function evalAlert(){
-  var cfg=store.get(AL_KEY);
-  if(!cfg || !cfg.enabled || cfg.level==null) return;
-  var val=alertValue(cfg); if(val==null) return;
-  var crossed=cfg.dir==="above"?(val>=cfg.level):(val<=cfg.level);
-  if(crossed && !cfg._crossed){
-    var unit=cfg.metric==="stage"?"ft":"cfs", s=STATIONS.find(function(x){ return x.key===cfg.gauge; });
-    var msg=(s?s.name:"River")+" is now "+(cfg.dir==="above"?"above":"below")+" "+cfg.level+" "+unit+" (currently "+(cfg.metric==="stage"?val.toFixed(2):Math.round(val))+").";
-    var fire=document.getElementById("al-fire"); fire.textContent="\u2691 "+msg; fire.style.display="block";
-    try{ if("Notification" in window && Notification.permission==="granted") new Notification("Blythe river alert",{body:msg}); }catch(e){}
-  }
-  cfg._crossed=crossed; store.set(AL_KEY,cfg);
-}
-document.getElementById("al-save").addEventListener("click", function(){
-  var cfg={ enabled:document.getElementById("al-on").checked, gauge:document.getElementById("al-gauge").value, metric:document.getElementById("al-metric").value, dir:document.getElementById("al-dir").value, level:parseFloat(document.getElementById("al-level").value), _crossed:false };
-  if(isNaN(cfg.level)){ alert("Enter a level first."); return; }
-  store.set(AL_KEY,cfg);
-  var note=document.getElementById("al-note");
-  if(cfg.enabled && "Notification" in window && Notification.permission==="default"){ Notification.requestPermission().then(function(){ note.textContent=Notification.permission==="granted"?"Alert saved. Notifications on \u2014 fires while this page is open.":"Alert saved. Notifications blocked, but the on-page banner still shows."; }); }
-  else { note.textContent="Alert saved. It fires while this page is open."; }
-  document.getElementById("al-fire").style.display="none"; evalAlert();
-});
+
 
 // ---------- loaders ----------
 function parseUsgs(json){
@@ -862,8 +808,22 @@ function loadAll(){
   sel.value=currentPlace().key;
   sel.addEventListener("change", function(){ store.set(PLACE_KEY, sel.value); rebuild(); });
 })();
+var MODE_KEY="blythe_mode_v1";
+(function initMode(){
+  var btn=document.getElementById("mode-btn");
+  function apply(m){
+    document.body.className = (m==="advanced") ? "" : "simple";
+    btn.textContent = (m==="advanced") ? "Simple view" : "Advanced";
+  }
+  var mode=store.get(MODE_KEY)||"simple";
+  apply(mode);
+  btn.addEventListener("click", function(){
+    mode = (mode==="advanced") ? "simple" : "advanced";
+    store.set(MODE_KEY, mode);
+    apply(mode);
+  });
+})();
 document.getElementById("refresh").addEventListener("click", loadAll);
-populateAlertGauges();
 loadAll();
 setInterval(loadAll, 15*60*1000);
 </script>

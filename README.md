@@ -1,8 +1,8 @@
 # Blythe River Reach — v2 (place picker + reliable forecast)
 
-Live water dashboard for the Colorado River between Parker Dam and Blythe.
-New in v2: a place picker (Lost Lake → Rancho Not So Grande), a dependable
-forecast via a GitHub "data relay", and nicer loading.
+Live water dashboard for the Colorado River from Lake Havasu down to McIntyre.
+Simple view by default; an Advanced button in the header reveals the full
+sensor cards. Data arrives via a GitHub "data relay" robot (see below).
 
 ## What's in here
 
@@ -73,6 +73,12 @@ River miles marked "(est.)" in the dropdown are my estimates from the listed
 order; everything else is from Reclamation's official river-mile index. To
 correct an estimate, edit its `mile` number in the `PLACES` list at the top
 of `index.html` — one mile ≈ 15 minutes of pulse travel at 4 mph.
+
+## Branches
+
+- **main** — the live site (Netlify deploys this; the robot commits data here).
+- **testing** — a scratch copy for trying changes. Edit files there first; when
+  you like the result, open a pull request on GitHub to merge into main.
 
 ## Good to know
 

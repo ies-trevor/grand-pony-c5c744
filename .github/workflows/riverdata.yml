@@ -5,6 +5,8 @@ on:
     - cron: "8 * * * *"   # every hour at :08 (GitHub cron can drift a few minutes)
   workflow_dispatch: {}    # lets you run it manually from the Actions tab
   push:
+    branches:
+      - main
     paths:
       - "scripts/**"
       - ".github/workflows/riverdata.yml"
