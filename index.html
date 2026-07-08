@@ -159,7 +159,7 @@
 
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-08e (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-08g (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
   Place timing is estimated from Reclamation river miles and the pulse travel speed (default ~4 mph, editable at the top of this file).<span id="cal-note"></span><br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -502,6 +502,15 @@ function rebuild(){
   st.sort(function(a,b){ return (a.order==null?9:a.order)-(b.order==null?9:b.order); });
   STATIONS=st;
   renderCards(); renderHero(); renderHeadgate(); renderReach(); renderTide();
+  (function staleCheck(){
+    var newest=0;
+    STATIONS.forEach(function(s){ if(s.source!=="USGS"){ var c=cur(s.flow); if(c && c.t>newest) newest=c.t; } });
+    var b=document.getElementById("banner");
+    if(b && newest && Date.now()-newest > 12*3600*1000 && b.style.display!=="block"){
+      b.style.display="block";
+      b.innerHTML='Heads up: Reclamation\u2019s live sensor feed looks stale \u2014 newest reading '+azTime(newest)+' MST. Their data generator pauses sometimes; this page picks it back up automatically. The dam schedules (forecast) are usually still current.';
+    }
+  })();
 }
 function getPrimary(){
   return STATIONS.find(function(s){ return s.primary && s.flow.length; })
@@ -579,14 +588,21 @@ function renderHero(){
   var p=ref.st, series=p.flow.length?p.flow:p.stage, tr=trend(series), c=cur(series), f=cur(p.flow);
   var detail=(f?'<span class="mono">'+fmt(f.v)+' cfs</span>':'')+' \u00b7 as of '+azTime(c.t)+' MST';
   if(seg==="lake"){
-    elS.innerHTML='<span style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+'</span> Dam release is '+TWORD[tr];
-    var lakeBit='';
     if(havasuData && havasuData.length){
-      var eN=havasuData[havasuData.length-1].v;
+      var last=havasuData[havasuData.length-1], eN=last.v;
+      var cut=last.t-24*3600*1000, prev=null;
+      for(var q=0;q<havasuData.length;q++){ if(havasuData[q].t<=cut) prev=havasuData[q]; }
+      var d24=prev?(eN-prev.v):0;
+      var word=Math.abs(d24)<0.05?"holding steady":(d24>0?"rising slowly":"falling slowly");
+      var mark=Math.abs(d24)<0.05?TMARK.steady:(d24>0?TMARK.rising:TMARK.falling);
+      var col=Math.abs(d24)<0.05?TCOLOR.steady:(d24>0?TCOLOR.rising:TCOLOR.falling);
       var eLo=Math.min.apply(null, havasuData.map(function(x){return x.v;})), eHi=Math.max.apply(null, havasuData.map(function(x){return x.v;}));
-      lakeBit=' Lake elevation <b style="color:var(--text)" class="mono">'+eN.toFixed(2)+' ft</b> \u2014 it has moved only ~'+(eHi-eLo).toFixed(2)+' ft all week.';
+      elS.innerHTML='<span style="color:'+col+'">'+mark+'</span> Lake at <span class="mono">'+eN.toFixed(2)+' ft</span> \u00b7 '+word;
+      elSub.innerHTML='Lake elevation as of '+azTime(last.t)+' MST \u2014 it has moved only ~<b style="color:var(--text)" class="mono">'+(eHi-eLo).toFixed(2)+' ft</b> all week (no daily river tide up here). What matters downstream is the release: '+detail+'.';
+    } else {
+      elS.innerHTML='<span style="color:'+TCOLOR[tr]+'">'+TMARK[tr]+'</span> Dam release is '+TWORD[tr];
+      elSub.innerHTML='Lake Havasu sits <b style="color:var(--text)">above</b> Parker Dam, so it doesn\u2019t get the daily river tide. (Lake elevation appears once the data robot updates.) Release: '+detail+'.';
     }
-    elSub.innerHTML='Lake Havasu sits <b style="color:var(--text)">above</b> Parker Dam, so it doesn\u2019t get the daily river tide.'+lakeBit+' What matters downstream is the release: '+detail+'.';
     elC.innerHTML="";
     return;
   }
@@ -602,6 +618,15 @@ function renderHero(){
 function renderReach(){
   var lead=document.getElementById("fc-lead"), now=document.getElementById("fc-now"), svg=document.getElementById("fc-chart"), skel=document.getElementById("fc-skel"), title=document.getElementById("fc-title");
   var pl=currentPlace(), ref=refFor(pl);
+  if(segFor(pl)==="lake" && havasuData && havasuData.length){
+    if(skel) skel.style.display="none";
+    if(title) title.textContent="Recent \u2014 Lake Havasu elevation";
+    var lc=havasuData[havasuData.length-1];
+    now.innerHTML='Lake now <b class="mono">'+lc.v.toFixed(2)+' ft</b> \u00b7 '+azTime(lc.t)+' MST';
+    var lr=areaChart(svg, havasuData, "var(--water)", false, "fc-axis", false);
+    lead.innerHTML='The lake\u2019s elevation over the last 7 days \u2014 it ranged just <b class="mono" style="color:var(--text)">'+lr.min.toFixed(2)+'</b>\u2013<b class="mono" style="color:var(--text)">'+lr.max.toFixed(2)+' ft</b> while the river below swings several feet a day.';
+    return;
+  }
   var st=(ref && ref.st && ref.st.flow.length) ? ref.st : null;
   if(skel) skel.style.display = (st || borTried) ? "none" : "block";
   if(title) title.textContent = "Recent \u2014 " + (st ? st.name + " sensor" : "nearest sensor");
@@ -680,7 +705,7 @@ function renderHeadgate(){
   var milesUp=Math.round(Math.abs(fc.originMile-pl.mile));
   var whereBit=(fc.seg==="lake")?'released into the river just below the lake':(milesUp<1?'right here at the dam':milesUp+' river miles upstream');
   lead.innerHTML='Reclamation&rsquo;s projected releases from '+fc.originName+' ('+whereBit+'), time-shifted to estimated arrival at <b style="color:var(--text)">'+esc(pl.name)+'</b> assuming a ~'+WAVE_MPH+' mph pulse. Dashed = schedule + travel estimate, not a reading. Range ahead: <b class="mono" style="color:var(--text)">'+fmt(r.min)+'</b>\u2013<b class="mono" style="color:var(--text)">'+fmt(r.max)+'</b> cfs'+((ftLo!=null&&ftHi!=null)?' (about <b class="mono" style="color:var(--text)">+'+ftLo.toFixed(1)+'</b> to <b class="mono" style="color:var(--text)">+'+ftHi.toFixed(1)+' ft</b> above the weekly low)':'')+'.'+fc.srcNote;
-  noteEl.textContent=hgData.note||"";
+  noteEl.textContent=(fc.seg==="strip"||fc.seg==="lake") ? "" : ((hgData&&hgData.note)||"");
 }
 
 // ---------- tide ----------

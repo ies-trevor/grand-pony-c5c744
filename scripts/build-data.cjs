@@ -218,7 +218,7 @@ async function main() {
   const out = { generatedAt: new Date().toISOString(), stations: [], headgate: null, errors: [] };
 
   try {
-    const r = await fetch(BOR, { headers: { "User-Agent": "blythe-river-bot" } });
+    const r = await fetch(BOR + "?t=" + Date.now(), { headers: { "User-Agent": "blythe-river-bot", "Cache-Control": "no-cache", "Pragma": "no-cache" } });
     if (!r.ok) throw new Error("HTTP " + r.status);
     const feed = await r.json();
     out.stations = buildStations(feed);
