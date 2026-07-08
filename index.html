@@ -159,7 +159,7 @@
 
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-05e (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-08b (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
   Place timing is estimated from Reclamation river miles and a ~4 mph pulse speed (both editable at the top of this file &mdash; calibrate against your own dock).<br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -195,28 +195,34 @@ var SENSORS = [
   {key:"i10",        mile:121.3, label:"the I-10 sensor"},
   {key:"taylor",     mile:106.6, label:"the Taylor Ferry sensor"}
 ];
-// Places, upstream to downstream. mile = Reclamation river mile.
-// No "est" flag = documented in the official index. est:true = my estimate from your
-// ordering \u2014 nudge these numbers (1 mile \u2248 15 min of pulse travel at 4 mph).
+// Places, upstream to downstream. mile = Reclamation river mile — documented in
+// the official river-mile index or computed from your GPS pins projected between
+// documented anchors (1 mile \u2248 15 min of pulse travel at 4 mph).
 var PLACES = [
   {key:"havasu",      name:"Lake Havasu",              mile:193.5, seg:"lake"},
   {key:"parkerdam",   name:"Parker Dam",               mile:192.2},
-  {key:"strip",       name:"Parker Strip",             mile:184.5, est:true},
+  {key:"riverlodge",  name:"River Lodge Resort",       mile:189.1},
+  {key:"roadrunner",  name:"Roadrunner",               mile:185.1},
+  {key:"moovalya",    name:"Moovalya Keys",            mile:181.6},
+  {key:"bluewater",   name:"Bluewater Resort",         mile:178.2},
   {key:"headgate",    name:"Headgate Rock Dam",        mile:177.7},
-  {key:"bigriver",    name:"Big River",                mile:171.1},
+  {key:"bigriver",    name:"Big River",                mile:170.5},
   {key:"agneswilson", name:"Agnes Wilson Bridge",      mile:163.3},
   {key:"lostlake",    name:"Lost Lake",                mile:159.8},
-  {key:"hidden",      name:"Hidden Valley",            mile:155.5, est:true},
+  {key:"hidden",      name:"Hidden Valley",            mile:155.7},
   {key:"ww",          name:"Water Wheel",              mile:151.4},
-  {key:"shaggy",      name:"Shaggy Tree",              mile:149.0, est:true},
-  {key:"ahaquin",     name:"Aha Quin",                 mile:147.0, est:true},
-  {key:"twin",        name:"Twin Palms",               mile:144.5, est:true},
-  {key:"rancho",      name:"Rancho Not So Grande",     mile:141.5, est:true},
-  {key:"villa",       name:"Villa Shores",             mile:138.0, est:true},
+  {key:"shaggy",      name:"Shaggy Tree",              mile:148.2},
+  {key:"ahaquin",     name:"Aha Quin",                 mile:145.1},
+  {key:"twin",        name:"Twin Palms",               mile:144.1},
+  {key:"rancho",      name:"Rancho Not So Grande",     mile:141.0},
+  {key:"villa",       name:"Villa Shores",             mile:138.2},
   {key:"pvdam",       name:"Palo Verde Diversion Dam", mile:133.8},
-  {key:"hiddenbeach", name:"Hidden Beaches Resort",    mile:131.0, est:true},
+  {key:"hiddenbeach", name:"Hidden Beaches Resort",    mile:126.9},
   {key:"i10fwy",      name:"I-10 freeway",             mile:121.3},
-  {key:"mcintyre",    name:"McIntyre",                 mile:113.8}
+  {key:"mcintyre",    name:"McIntyre",                 mile:113.8},
+  {key:"riverroad",   name:"River Road Bridge",        mile:104.1},
+  {key:"hartmine",    name:"Hart Mine Road Bridge",    mile:93.6},
+  {key:"walters",     name:"Walter's Camp",            mile:88.3}
 ];
 var PLACE_KEY = "blythe_place_v1";
 // =================================
